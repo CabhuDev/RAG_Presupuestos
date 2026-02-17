@@ -1,0 +1,61 @@
+# ============================================
+# RAG para Presupuestos de Obra
+# Docker Compose
+# ============================================
+
+services:
+  # API FastAPI
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rag_api
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/rag_presupuestos
+      - DATABASE_URL_SYNC=postgresql+psycopg2://postgres:postgres@db:5432/rag_presupuestos
+    volumes:
+      - uploads:/app/uploads
+      - logs:/app/logs
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # PostgreSQL con pgvector
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: rag_db
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=rag_presupuestos
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  uploads:
+  logs:
+  postgres_data:
+
+# Redes
+networks:
+  default:
+    name: rag_network

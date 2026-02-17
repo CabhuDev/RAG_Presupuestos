@@ -1,0 +1,3 @@
+"""
+Core del proyecto.
+"""
