@@ -21,90 +21,78 @@ Sistema RAG (Retrieval Augmented Generation) para crear presupuestos de obra. La
 ## Estructura del Proyecto
 
 ```
-rag_presupuestos/
+RAG_construccion/
 ├── app/
 │   ├── __init__.py
 │   ├── main.py                    # Punto de entrada FastAPI
-│   ├── config.py                  # Configuración centralizada
-│   ├── logging_config.py          # Configuración de logs
+│   ├── config.py                  # Configuración centralizada (pydantic-settings)
+│   ├── logging_config.py          # Configuración de loguru
 │   │
 │   ├── api/                       # Capa de rutas/endpoints
 │   │   ├── __init__.py
-│   │   ├── routes/
-│   │   │   ├── __init__.py
-│   │   │   ├── documents.py       # Endpoints de documentos
-│   │   │   ├── knowledge.py       # Endpoints de conocimiento
-│   │   │   ├── rag.py            # Endpoints de consultas RAG
-│   │   │   └── embeddings.py      # Endpoints de embeddings
-│   │   └── dependencies.py       # Dependencias reutilizables
+│   │   ├── dependencies.py        # Dependencias reutilizables (sesión BD)
+│   │   └── routes/
+│   │       ├── __init__.py
+│   │       ├── documents.py       # Endpoints de documentos
+│   │       ├── knowledge.py       # Endpoints de conocimiento
+│   │       └── rag.py             # Endpoints de consultas RAG
 │   │
 │   ├── core/                      # Lógica de negocio core
 │   │   ├── __init__.py
 │   │   ├── models/               # Modelos SQLAlchemy
 │   │   │   ├── __init__.py
-│   │   │   ├── document.py       # Modelo Documento
+│   │   │   ├── base.py           # Base, UUIDMixin, TimestampMixin
+│   │   │   ├── document.py       # Modelo Document
 │   │   │   ├── chunk.py          # Modelo Chunk (texto extraído)
-│   │   │   └── embedding.py      # Modelo Embedding
-│   │   ├── schemas/             # Pydantic schemas (validación)
+│   │   │   └── embedding.py      # Modelo Embedding (pgvector)
+│   │   ├── schemas/              # Pydantic schemas (validación)
 │   │   │   ├── __init__.py
 │   │   │   ├── document.py
 │   │   │   ├── query.py
 │   │   │   └── response.py
-│   │   └── services/            # Lógica de negocio
+│   │   └── services/             # Lógica de negocio
 │   │       ├── __init__.py
-│   │       ├── document_service.py
-│   │       ├── embedding_service.py
-│   │       ├── vector_search_service.py
-│   │       └── rag_service.py
+│   │       ├── document_service.py      # Gestión y procesamiento de documentos
+│   │       ├── vector_search_service.py # Búsqueda vectorial con pgvector
+│   │       └── rag_service.py           # Orquestación RAG
 │   │
 │   ├── processors/               # Procesadores de documentos
 │   │   ├── __init__.py
 │   │   ├── base.py              # Clase abstracta Processor
-│   │   ├── pdf_processor.py
-│   │   ├── txt_processor.py
-│   │   ├── csv_processor.py
-│   │   └── docx_processor.py
+│   │   ├── pdf_processor.py     # PDF (pdfplumber + PyMuPDF)
+│   │   ├── txt_processor.py     # TXT, MD
+│   │   ├── csv_processor.py     # CSV, XLSX (pandas)
+│   │   └── docx_processor.py   # DOCX (python-docx)
 │   │
 │   ├── embeddings/               # Módulo de embeddings
 │   │   ├── __init__.py
-│   │   ├── encoder.py           # Wrapper para sentence-transformers
-│   │   └── vectorizer.py        # Lógica de vectorización
+│   │   └── encoder.py           # Wrapper para sentence-transformers
 │   │
-│   ├── llm/                      # Módulo LLM - GOOGLE GEMINI
+│   ├── llm/                      # Módulo LLM - Google Gemini
 │   │   ├── __init__.py
-│   │   ├── base.py              # Clase abstracta LLM
+│   │   ├── base.py              # Clase abstracta LLMClient
 │   │   ├── gemini_client.py     # Implementación Google Gemini
 │   │   └── factory.py           # Factory para crear clientes LLM
 │   │
 │   └── database/                 # Configuración de BD
 │       ├── __init__.py
-│       ├── connection.py        # Sesiones SQLAlchemy
-│       ├── migrations/          # Alembic migrations
-│       └── seeders/             # Datos iniciales
+│       └── connection.py        # Sesiones async/sync SQLAlchemy
 │
-├── tests/                        # Tests
-│   ├── __init__.py
-│   ├── conftest.py
-│   ├── api/
-│   ├── core/
-│   └── processors/
+├── alembic/                      # Migraciones de base de datos
+│   ├── env.py
+│   ├── script.py.mako
+│   ├── versions/
+│   │   └── 001_initial_migration.py
+│   └── README.md
 │
-├── docs/                         # Documentación
-│   ├── api.md
-│   ├── architecture.md
-│   └── deployment.md
-│
-├── scripts/                      # Scripts utilitarios
-│   ├── init_db.py
-│   ├── seed_data.py
-│   └── export_knowledge.py
-│
+├── alembic.ini                   # Configuración Alembic
 ├── requirements.txt
-├── requirements-dev.txt
 ├── .env.example
 ├── docker-compose.yml
 ├── Dockerfile
-└── README.md
+├── README.md
+├── PLAN.md
+└── INFORME_AUDITORIA_SEGURIDAD.md
 ```
 
 ---
@@ -124,21 +112,19 @@ rag_presupuestos/
 ### 📚 Base de Conocimiento
 | Método | Endpoint | Descripción |
 |--------|----------|-------------|
-| GET | `/api/v1/knowledge/search` | Búsqueda semántica |
-| GET | `/api/v1/knowledge/chunks` | Ver chunks de un documento |
+| GET | `/api/v1/knowledge/search` | Búsqueda semántica (sin LLM) |
+| GET | `/api/v1/knowledge/chunks/{document_id}` | Ver chunks de un documento |
 | GET | `/api/v1/knowledge/stats` | Estadísticas de la base |
 
 ### 🤖 Consultas RAG
 | Método | Endpoint | Descripción |
 |--------|----------|-------------|
 | POST | `/api/v1/rag/query` | Realizar consulta al RAG |
-| GET | `/api/v1/rag/history` | Historial de consultas |
 
 ### ⚙️ Sistema
 | Método | Endpoint | Descripción |
 |--------|----------|-------------|
 | GET | `/health` | Health check |
-| GET | `/api/v1/embeddings/status` | Estado del pipeline |
 
 ---
 
@@ -198,21 +184,22 @@ El sistema soportará:
 
 ---
 
-## Lista de Tareas Completas
+## Lista de Tareas
 
-- [ ] Crear estructura del proyecto FastAPI modular
-- [ ] Configurar PostgreSQL con extensión pgvector
-- [ ] Implementar modelos SQLAlchemy con SQLAlchemy 2.0
-- [ ] Crear processors para PDF, TXT, CSV, DOCX
-- [ ] Implementar pipeline de embeddings con sentence-transformers
-- [ ] Desarrollar endpoints REST con soporte drag & drop
-- [ ] Implementar sistema de barra de progreso (polling + porcentaje)
-- [ ] Desarrollar endpoints para consultas RAG con Gemini
-- [ ] Implementar sistema de búsqueda híbrida (vector + metadatos)
-- [ ] Agregar configuración con .env y validaciones
+- [x] Crear estructura del proyecto FastAPI modular
+- [x] Configurar PostgreSQL con extensión pgvector
+- [x] Implementar modelos SQLAlchemy con SQLAlchemy 2.0
+- [x] Crear processors para PDF, TXT, CSV, DOCX
+- [x] Implementar pipeline de embeddings con sentence-transformers
+- [x] Desarrollar endpoints REST con soporte drag & drop
+- [x] Implementar sistema de barra de progreso (polling + porcentaje)
+- [x] Desarrollar endpoints para consultas RAG con Gemini
+- [x] Implementar sistema de búsqueda semántica (vector + metadatos)
+- [x] Agregar configuración con .env y validaciones
+- [x] Documentar API con Swagger/OpenAPI
+- [x] Crear docker-compose para despliegue
 - [ ] Crear tests unitarios y de integración
-- [ ] Documentar API con Swagger/OpenAPI
-- [ ] Crear docker-compose para despliegue
+- [ ] Implementar autenticación (API Keys / JWT)
 
 ---
 

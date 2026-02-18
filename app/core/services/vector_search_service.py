@@ -46,6 +46,8 @@ class VectorSearchService:
 
         # Construir consulta SQL con pgvector
         # Usamos cosine_distance para embeddings normalizados
+        embedding_str = str(query_embedding.tolist())
+
         sql = text("""
             SELECT
                 c.id as chunk_id,
@@ -55,7 +57,7 @@ class VectorSearchService:
                 c.source_page,
                 c.source_row,
                 d.filename,
-                1 - (e.vector <=> :query_embedding::vector) as score
+                1 - (e.vector <=> CAST(:query_embedding AS vector)) as score
             FROM chunks c
             JOIN embeddings e ON c.id = e.chunk_id
             JOIN documents d ON c.document_id = d.id
@@ -64,7 +66,7 @@ class VectorSearchService:
 
         # Agregar filtros si existen
         params: dict[str, Any] = {
-            "query_embedding": query_embedding.tolist(),
+            "query_embedding": embedding_str,
             "max_results": max_results,
         }
 
@@ -123,6 +125,7 @@ class VectorSearchService:
         """
         # Generar embedding de la query
         query_embedding = self.encoder.encode_queries([query])[0]
+        embedding_str = str(query_embedding.tolist())
 
         # Consulta SQL
         sql = text("""
@@ -134,7 +137,7 @@ class VectorSearchService:
                 c.source_page,
                 c.source_row,
                 d.filename,
-                1 - (e.vector <=> :query_embedding::vector) as score
+                1 - (e.vector <=> CAST(:query_embedding AS vector)) as score
             FROM chunks c
             JOIN embeddings e ON c.id = e.chunk_id
             JOIN documents d ON c.document_id = d.id
@@ -145,7 +148,7 @@ class VectorSearchService:
         """)
 
         result = await self.session.execute(sql, {
-            "query_embedding": query_embedding.tolist(),
+            "query_embedding": embedding_str,
             "document_id": str(document_id),
             "max_results": max_results,
         })

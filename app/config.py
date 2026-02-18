@@ -20,8 +20,8 @@ class Settings(BaseSettings):
 
     # Database
     database_url: str = Field(
-        default="postgresql://postgres:postgres@localhost:5432/rag_presupuestos",
-        description="URL de conexión a la base de datos PostgreSQL"
+        default="postgresql+asyncpg://postgres:postgres@localhost:5432/rag_presupuestos",
+        description="URL de conexión a la base de datos PostgreSQL (asyncpg)"
     )
     database_url_sync: str = Field(
         default="postgresql+psycopg2://postgres:postgres@localhost:5432/rag_presupuestos",

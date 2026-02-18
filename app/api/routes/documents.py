@@ -21,6 +21,7 @@ from app.core.schemas import (
     DocumentMetadata,
 )
 from app.core.services import DocumentService
+from app.core.services.document_service import SecurityError
 from loguru import logger
 
 router = APIRouter(prefix="/documents", tags=["Documentos"])
@@ -120,7 +121,7 @@ async def upload_document(
     return JSONResponse(
         content={
             "total": len(results),
-            "results": [r.model_dump() for r in results]
+            "results": [r.model_dump(mode="json") for r in results]
         }
     )
 

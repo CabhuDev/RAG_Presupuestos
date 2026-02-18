@@ -34,26 +34,54 @@ El sistema usa **Google Gemini** como LLM para generar respuestas precisas basad
 RAG_construccion/
 ├── app/
 │   ├── api/
+│   │   ├── dependencies.py        # Dependencias FastAPI (sesión BD)
 │   │   └── routes/
-│   │       ├── documents.py    # Endpoints de documentos
-│   │       ├── rag.py         # Endpoints RAG
-│   │       └── knowledge.py   # Búsqueda y estadísticas
+│   │       ├── documents.py       # Endpoints de documentos
+│   │       ├── rag.py             # Endpoints RAG
+│   │       └── knowledge.py       # Búsqueda y estadísticas
 │   ├── core/
-│   │   ├── models/            # Modelos SQLAlchemy
-│   │   ├── schemas/           # Schemas Pydantic
-│   │   └── services/          # Lógica de negocio
-│   ├── database/              # Conexión a BD
-│   ├── embeddings/            # Módulo de embeddings
-│   ├── llm/                   # Cliente LLM
-│   ├── processors/            # Procesadores de documentos
-│   ├── config.py              # Configuración
-│   └── main.py                # Punto de entrada
-├── alembic/                   # Migraciones
-├── scripts/                   # Scripts utilitarios
-├── docker-compose.yml         # Orquestación Docker
-├── Dockerfile                 # Imagen de la API
-├── requirements.txt           # Dependencias Python
-└── .env                       # Variables de entorno
+│   │   ├── models/                # Modelos SQLAlchemy
+│   │   │   ├── base.py            # Base, UUIDMixin, TimestampMixin
+│   │   │   ├── document.py        # Modelo Document
+│   │   │   ├── chunk.py           # Modelo Chunk
+│   │   │   └── embedding.py       # Modelo Embedding (pgvector)
+│   │   ├── schemas/               # Schemas Pydantic
+│   │   │   ├── document.py        # Schemas de documentos
+│   │   │   ├── query.py           # Schemas de consultas
+│   │   │   └── response.py        # Schemas de respuestas
+│   │   └── services/              # Lógica de negocio
+│   │       ├── document_service.py      # Procesamiento de documentos
+│   │       ├── vector_search_service.py # Búsqueda vectorial
+│   │       └── rag_service.py           # Orquestación RAG
+│   ├── database/
+│   │   └── connection.py          # Conexión async/sync SQLAlchemy
+│   ├── embeddings/
+│   │   └── encoder.py             # Wrapper sentence-transformers
+│   ├── llm/
+│   │   ├── base.py                # Clase abstracta LLMClient
+│   │   ├── gemini_client.py       # Implementación Google Gemini
+│   │   └── factory.py             # Factory para clientes LLM
+│   ├── processors/
+│   │   ├── base.py                # Clase abstracta Processor
+│   │   ├── pdf_processor.py       # Procesador PDF
+│   │   ├── txt_processor.py       # Procesador TXT/MD
+│   │   ├── csv_processor.py       # Procesador CSV/XLSX
+│   │   └── docx_processor.py      # Procesador DOCX
+│   ├── config.py                  # Configuración (pydantic-settings)
+│   ├── logging_config.py          # Configuración de loguru
+│   └── main.py                    # Punto de entrada FastAPI
+├── alembic/                       # Migraciones de BD
+│   ├── env.py
+│   ├── script.py.mako
+│   └── versions/
+│       └── 001_initial_migration.py
+├── alembic.ini                    # Configuración Alembic
+├── docker-compose.yml             # Orquestación Docker
+├── Dockerfile                     # Imagen de la API
+├── requirements.txt               # Dependencias Python
+├── .env.example                   # Plantilla de variables de entorno
+├── PLAN.md                        # Plan técnico del proyecto
+└── INFORME_AUDITORIA_SEGURIDAD.md # Auditoría de seguridad
 ```
 
 ## ⚡ Inicio Rápido

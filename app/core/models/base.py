@@ -2,7 +2,7 @@
 Base declarative para los modelos SQLAlchemy.
 """
 from datetime import datetime
-from uuid import uuid4
+from uuid import UUID as UUIDType, uuid4
 
 from sqlalchemy import DateTime, String, func
 from sqlalchemy.dialects.postgresql import UUID
@@ -38,7 +38,7 @@ class UUIDMixin:
     """
     Mixin que añade UUID como clave primaria.
     """
-    id: Mapped[uuid4] = mapped_column(
+    id: Mapped[UUIDType] = mapped_column(
         UUID(as_uuid=True),
         primary_key=True,
         default=uuid4,

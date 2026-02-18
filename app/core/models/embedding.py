@@ -57,16 +57,9 @@ class Embedding(Base, UUIDMixin, TimestampMixin):
         back_populates="embedding",
     )
 
-    # Índice para búsquedas vectoriales
-    __table_args__ = (
-        Index(
-            "ix_embeddings_vector_cosine",
-            "vector",
-            postgresql_using="ivfflat",
-            postgresql_with={"lists": 100},
-            postgresql_ops={"vector": "cosine_distance"},
-        ),
-    )
+    # Nota: El índice HNSW se crea manualmente vía Alembic migration
+    # para asegurar que la extensión pgvector esté instalada primero
+    # __table_args__ se deja vacío aquí para evitar errores de creación
 
     def __repr__(self) -> str:
         return f"<Embedding(id={self.id}, chunk_id={self.chunk_id}, dimensions={self.dimensions})>"

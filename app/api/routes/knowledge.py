@@ -85,21 +85,21 @@ async def get_stats(session: AsyncSession = Depends(get_db_session)):
         # Por tipo de documento
         type_query = select(
             Document.document_type,
-            func.count()
+            func.count().label('count')
         ).group_by(Document.document_type)
-        
+
         type_result = await session.execute(type_query)
         by_type = {}
         for row in type_result:
             if row.document_type:
                 by_type[row.document_type] = row.count
-        
+
         # Por categoría
         cat_query = select(
             Document.category,
-            func.count()
+            func.count().label('count')
         ).group_by(Document.category)
-        
+
         cat_result = await session.execute(cat_query)
         by_category = {}
         for row in cat_result:

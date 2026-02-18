@@ -43,9 +43,9 @@ alembic upgrade +1
 alembic downgrade -1
 ```
 
-### Revertir todas las migr
-alembicaciones
-```bash downgrade base
+### Revertir todas las migraciones
+```bash
+alembic downgrade base
 ```
 
 ### Ver historial de migraciones

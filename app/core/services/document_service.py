@@ -14,7 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
-from app.core.models import Document, Chunk
+from app.core.models import Document, Chunk, Embedding
 from app.processors import get_processor
 from app.embeddings import get_encoder
 from loguru import logger
