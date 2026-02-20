@@ -1,11 +1,12 @@
 """
 Cliente para Google Gemini.
+Usa el SDK oficial google-genai (reemplaza al deprecado google-generativeai).
 """
 import asyncio
-import os
 from typing import Any
 
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 
 from app.config import get_settings
 from app.llm.base import LLMClient
@@ -28,8 +29,8 @@ class GeminiClient(LLMClient):
         if not settings.gemini_api_key:
             raise ValueError("GEMINI_API_KEY no está configurada")
 
-        # Configurar Gemini
-        genai.configure(api_key=settings.gemini_api_key)
+        # Cliente centralizado (nuevo SDK)
+        self.client = genai.Client(api_key=settings.gemini_api_key)
 
         self.model_name = settings.gemini_model
         self.default_temperature = settings.gemini_temperature
@@ -42,7 +43,7 @@ class GeminiClient(LLMClient):
         prompt: str,
         system_prompt: str | None = None,
         temperature: float = 0.7,
-        max_tokens: int = 2048,
+        max_tokens: int = 8192,
     ) -> str:
         """
         Genera una respuesta a partir de un prompt.
@@ -56,25 +57,60 @@ class GeminiClient(LLMClient):
         Returns:
             Texto generado.
         """
-        generation_config = {
-            "temperature": temperature,
-            "max_output_tokens": max_tokens,
-        }
-
-        model = genai.GenerativeModel(
-            model_name=self.model_name,
+        config = types.GenerateContentConfig(
+            temperature=temperature,
+            max_output_tokens=max_tokens,
             system_instruction=system_prompt,
-            generation_config=generation_config,
         )
 
         for attempt in range(_MAX_RETRIES):
             try:
-                response = await model.generate_content_async(prompt)
+                # Usar client.aio para llamadas asíncronas
+                response = await self.client.aio.models.generate_content(
+                    model=self.model_name,
+                    contents=prompt,
+                    config=config,
+                )
+
+                # Manejar respuesta bloqueada
+                if not response.candidates:
+                    logger.warning("Gemini no devolvió candidatos (posible bloqueo de seguridad)")
+                    raise ValueError(
+                        "La IA no pudo generar una respuesta para esta consulta. "
+                        "Intenta reformular la pregunta."
+                    )
+
+                candidate = response.candidates[0]
+
+                # Verificar finish_reason
+                finish_reason = candidate.finish_reason
+                if finish_reason and finish_reason not in ("STOP", "MAX_TOKENS"):
+                    logger.warning(f"Gemini finish_reason: {finish_reason}")
+
+                    # Intentar extraer texto parcial si existe
+                    if candidate.content and candidate.content.parts:
+                        text = candidate.content.parts[0].text
+                        logger.info(
+                            f"Extraído texto parcial ({len(text)} chars) "
+                            f"a pesar de finish_reason={finish_reason}"
+                        )
+                        return text
+
+                    raise ValueError(
+                        "La IA no pudo completar la respuesta. "
+                        "Intenta reformular la pregunta."
+                    )
+
                 return response.text
+
+            except ValueError:
+                # Errores controlados, no reintentar
+                raise
 
             except Exception as e:
                 error_str = str(e)
-                is_rate_limit = "429" in error_str or "quota" in error_str.lower()
+                logger.debug(f"Excepción Gemini ({type(e).__name__}): {error_str[:500]}")
+                is_rate_limit = "429" in error_str or "quota" in error_str.lower() or "resource" in error_str.lower()
 
                 if is_rate_limit and attempt < _MAX_RETRIES - 1:
                     wait = (attempt + 1) * 10  # 10s, 20s, 30s
@@ -101,7 +137,7 @@ class GeminiClient(LLMClient):
         context: list[str],
         system_prompt: str | None = None,
         temperature: float = 0.7,
-        max_tokens: int = 2048,
+        max_tokens: int = 8192,
     ) -> str:
         """
         Genera una respuesta usando RAG.

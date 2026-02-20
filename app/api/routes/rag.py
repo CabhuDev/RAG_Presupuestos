@@ -2,6 +2,7 @@
 Endpoints para consultas RAG.
 """
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import Response
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,8 +14,10 @@ from app.core.schemas import (
     KnowledgeSearchRequest,
     KnowledgeSearchResponse,
     ChunkResult,
+    BC3GenerateRequest,
+    BC3GenerateResponse,
 )
-from app.core.services import RAGService
+from app.core.services import RAGService, BC3Generator
 from loguru import logger
 
 router = APIRouter(prefix="/rag", tags=["RAG"])
@@ -79,6 +82,108 @@ async def query_rag(
     except Exception as e:
         logger.error(f"Error en consulta RAG: {e}")
         raise HTTPException(status_code=500, detail="Error al procesar la consulta")
+
+
+@router.post(
+    "/generate-bc3",
+    response_model=BC3GenerateResponse,
+    summary="Generar archivo BC3",
+)
+@limiter.limit("10/minute")
+async def generate_bc3(
+    request: Request,
+    bc3_request: BC3GenerateRequest,
+    session: AsyncSession = Depends(get_db_session),
+):
+    """
+    Genera un archivo BC3/FIEBDC-3 a partir de partidas buscadas
+    en la base de conocimiento.
+
+    Envía una lista de descripciones de partidas y el sistema:
+    1. Busca cada partida en la base de conocimiento
+    2. Extrae código, precio, unidad y descripción
+    3. Genera un archivo BC3 válido con las partidas encontradas
+    """
+    if not bc3_request.queries:
+        raise HTTPException(
+            status_code=400,
+            detail="Debes proporcionar al menos una partida a buscar",
+        )
+
+    try:
+        generator = BC3Generator(session)
+        bc3_content = await generator.generate_from_queries(
+            queries=bc3_request.queries,
+            max_results_per_query=bc3_request.max_results_per_query,
+            project_name=bc3_request.project_name,
+        )
+
+        # Contar partidas (líneas ~C sin ## ni #, es decir, partidas simples)
+        total_items = sum(
+            1
+            for line in bc3_content.split("\n")
+            if line.startswith("~C|") and not line.split("|")[1].endswith(("#", "##"))
+        )
+
+        return BC3GenerateResponse(
+            bc3_content=bc3_content,
+            total_items=total_items,
+            queries_processed=len(bc3_request.queries),
+        )
+
+    except Exception as e:
+        logger.error(f"Error al generar BC3: {e}")
+        raise HTTPException(
+            status_code=500, detail="Error al generar el archivo BC3"
+        )
+
+
+@router.post(
+    "/download-bc3",
+    summary="Descargar archivo BC3",
+)
+@limiter.limit("10/minute")
+async def download_bc3(
+    request: Request,
+    bc3_request: BC3GenerateRequest,
+    session: AsyncSession = Depends(get_db_session),
+):
+    """
+    Genera y descarga directamente un archivo BC3.
+    Devuelve el archivo como descarga con Content-Disposition.
+    """
+    if not bc3_request.queries:
+        raise HTTPException(
+            status_code=400,
+            detail="Debes proporcionar al menos una partida a buscar",
+        )
+
+    try:
+        generator = BC3Generator(session)
+        bc3_content = await generator.generate_from_queries(
+            queries=bc3_request.queries,
+            max_results_per_query=bc3_request.max_results_per_query,
+            project_name=bc3_request.project_name,
+        )
+
+        # Codificar en latin-1 (estándar BC3 en España)
+        bc3_bytes = bc3_content.encode("latin-1", errors="replace")
+
+        filename = "presupuesto.bc3"
+
+        return Response(
+            content=bc3_bytes,
+            media_type="application/octet-stream",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+            },
+        )
+
+    except Exception as e:
+        logger.error(f"Error al descargar BC3: {e}")
+        raise HTTPException(
+            status_code=500, detail="Error al generar el archivo BC3"
+        )
 
 
 @router.get("/history", summary="Historial de consultas")

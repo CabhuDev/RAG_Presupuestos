@@ -111,7 +111,8 @@ class RAGService:
         filters: Optional[dict] = None,
     ) -> dict:
         """
-        Búsqueda en la base de conocimiento sin generar respuesta LLM.
+        Búsqueda en la base de conocimiento sin LLM.
+        Devuelve los resultados directos de la búsqueda vectorial.
 
         Args:
             query: Texto de búsqueda.
@@ -127,7 +128,6 @@ class RAGService:
             filters=filters,
         )
 
-        # Formatear resultados
         formatted_results = []
         for r in results:
             formatted_results.append({
@@ -139,6 +139,8 @@ class RAGService:
                 "source_page": r.get("source_page"),
                 "source_row": r.get("source_row"),
             })
+
+        logger.info(f"Knowledge search: '{query}', resultados: {len(results)}")
 
         return {
             "query": query,

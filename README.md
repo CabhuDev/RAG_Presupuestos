@@ -1,44 +1,49 @@
-# 🏗️ RAG para Presupuestos de Obra
+# RAG para Presupuestos de Obra
 
 Sistema RAG (Retrieval Augmented Generation) para crear presupuestos de obra con base de conocimiento.
 
-## 📋 Descripción
+## Descripcion
 
-Este proyecto permite crear un sistema de conocimiento para presupuestos de construcción. Los usuarios pueden subir documentos (PDF, TXT, CSV, DOCX) que se procesan para generar embeddings y permitir búsquedas semánticas.
+Este proyecto permite crear un sistema de conocimiento para presupuestos de construccion. Los usuarios pueden subir documentos (PDF, TXT, CSV, DOCX, BC3) que se procesan para generar embeddings y permitir busquedas semanticas.
 
-El sistema usa **Google Gemini** como LLM para generar respuestas precisas basadas en los documentos subidos.
+El sistema usa **Google Gemini** como LLM para generar respuestas precisas basadas en los documentos subidos, actuando como un arquitecto tecnico colegiado con experiencia en el sector de la construccion en Espana.
 
-## 🚀 Características
+## Caracteristicas
 
-- 📤 **Upload de archivos** con soporte drag & drop
-- 📊 **Procesamiento automático** de documentos (PDF, TXT, CSV, DOCX)
-- 🔍 **Búsqueda semántica** usando embeddings vectoriales
-- 🤖 **Consultas RAG** con Google Gemini
-- 📈 **Barra de progreso** en tiempo real
-- 🔄 **API REST** completa con FastAPI
-- 🐳 **Docker** para despliegue
+- Upload de archivos con soporte drag & drop (max 10 por subida)
+- Procesamiento automatico de documentos (PDF, TXT, CSV, DOCX, BC3/FIEBDC-3)
+- Extraccion de tablas de PDF como markdown
+- Filtrado de boilerplate en PDFs para mejorar calidad de embeddings
+- Busqueda semantica usando embeddings vectoriales multilingues
+- Consultas RAG con Google Gemini (retry automatico ante rate limiting)
+- Generacion de archivos BC3 a partir de consultas RAG
+- Barra de progreso en tiempo real
+- API REST completa con FastAPI
+- Docker para despliegue con hot-reload en desarrollo
 
-## 🛠️ Stack Tecnológico
+## Stack Tecnologico
 
-| Componente | Tecnología |
+| Componente | Tecnologia |
 |------------|------------|
 | API | FastAPI |
-| Base de datos | PostgreSQL + pgvector |
-| ORM | SQLAlchemy 2.0 |
-| LLM | Google Gemini |
-| Embeddings | sentence-transformers |
+| Base de datos | PostgreSQL + pgvector 0.2.5 |
+| ORM | SQLAlchemy 2.0 (async) |
+| LLM | Google Gemini (modelo configurable en .env) |
+| Embeddings | sentence-transformers (paraphrase-multilingual-MiniLM-L12-v2) |
+| Migraciones | Alembic (idempotentes) |
+| Contenedores | Docker Compose |
 
-## 📦 Estructura del Proyecto
+## Estructura del Proyecto
 
 ```
 RAG_construccion/
 ├── app/
 │   ├── api/
-│   │   ├── dependencies.py        # Dependencias FastAPI (sesión BD)
+│   │   ├── dependencies.py        # Dependencias FastAPI (sesion BD)
 │   │   └── routes/
 │   │       ├── documents.py       # Endpoints de documentos
-│   │       ├── rag.py             # Endpoints RAG
-│   │       └── knowledge.py       # Búsqueda y estadísticas
+│   │       ├── rag.py             # Endpoints RAG + generacion BC3
+│   │       └── knowledge.py       # Busqueda y estadisticas
 │   ├── core/
 │   │   ├── models/                # Modelos SQLAlchemy
 │   │   │   ├── base.py            # Base, UUIDMixin, TimestampMixin
@@ -47,53 +52,54 @@ RAG_construccion/
 │   │   │   └── embedding.py       # Modelo Embedding (pgvector)
 │   │   ├── schemas/               # Schemas Pydantic
 │   │   │   ├── document.py        # Schemas de documentos
-│   │   │   ├── query.py           # Schemas de consultas
+│   │   │   ├── query.py           # Schemas de consultas y BC3
 │   │   │   └── response.py        # Schemas de respuestas
-│   │   └── services/              # Lógica de negocio
+│   │   └── services/              # Logica de negocio
 │   │       ├── document_service.py      # Procesamiento de documentos
-│   │       ├── vector_search_service.py # Búsqueda vectorial
-│   │       └── rag_service.py           # Orquestación RAG
+│   │       ├── vector_search_service.py # Busqueda vectorial
+│   │       ├── rag_service.py           # Orquestacion RAG
+│   │       └── bc3_generator.py         # Generacion de archivos BC3
 │   ├── database/
-│   │   └── connection.py          # Conexión async/sync SQLAlchemy
+│   │   └── connection.py          # Conexion async/sync SQLAlchemy
 │   ├── embeddings/
 │   │   └── encoder.py             # Wrapper sentence-transformers
 │   ├── llm/
 │   │   ├── base.py                # Clase abstracta LLMClient
-│   │   ├── gemini_client.py       # Implementación Google Gemini
+│   │   ├── gemini_client.py       # Implementacion Google Gemini
 │   │   └── factory.py             # Factory para clientes LLM
 │   ├── processors/
 │   │   ├── base.py                # Clase abstracta Processor
-│   │   ├── pdf_processor.py       # Procesador PDF
+│   │   ├── pdf_processor.py       # Procesador PDF (tablas + boilerplate)
 │   │   ├── txt_processor.py       # Procesador TXT/MD
 │   │   ├── csv_processor.py       # Procesador CSV/XLSX
-│   │   └── docx_processor.py      # Procesador DOCX
-│   ├── config.py                  # Configuración (pydantic-settings)
-│   ├── logging_config.py          # Configuración de loguru
+│   │   ├── docx_processor.py      # Procesador DOCX
+│   │   └── bc3_processor.py       # Procesador BC3/FIEBDC-3
+│   ├── config.py                  # Configuracion (pydantic-settings)
+│   ├── logging_config.py          # Configuracion de loguru
 │   └── main.py                    # Punto de entrada FastAPI
-├── alembic/                       # Migraciones de BD
+├── alembic/                       # Migraciones de BD (idempotentes)
 │   ├── env.py
 │   ├── script.py.mako
 │   └── versions/
 │       └── 001_initial_migration.py
-├── alembic.ini                    # Configuración Alembic
-├── docker-compose.yml             # Orquestación Docker
-├── Dockerfile                     # Imagen de la API
+├── alembic.ini                    # Configuracion Alembic
+├── docker-compose.yml             # Orquestacion Docker
+├── Dockerfile                     # Imagen de la API (PyTorch CPU-only)
 ├── requirements.txt               # Dependencias Python
 ├── .env.example                   # Plantilla de variables de entorno
-├── PLAN.md                        # Plan técnico del proyecto
-└── INFORME_AUDITORIA_SEGURIDAD.md # Auditoría de seguridad
+└── PLAN.md                        # Plan tecnico del proyecto
 ```
 
-## ⚡ Inicio Rápido
+## Inicio Rapido
 
 ### Prerrequisitos
 
 - Python 3.11+
-- PostgreSQL con extensión pgvector
-- Docker y Docker Compose (opcional)
+- PostgreSQL con extension pgvector
+- Docker y Docker Compose (recomendado)
 - API Key de Google Gemini
 
-### Instalación con Docker
+### Instalacion con Docker
 
 1. Clonar el repositorio
 2. Configurar `.env`:
@@ -111,7 +117,9 @@ docker-compose up -d --build
 curl http://localhost:8000/health
 ```
 
-### Instalación Local
+**Nota:** El contenedor tiene hot-reload activado. Los cambios en codigo Python se aplican automaticamente. Solo necesitas reconstruir (`--build`) cuando cambies `requirements.txt` o `Dockerfile`.
+
+### Instalacion Local
 
 1. Crear entorno virtual:
 ```bash
@@ -120,8 +128,9 @@ venv\Scripts\activate  # Windows
 source venv/bin/activate  # Linux/Mac
 ```
 
-2. Instalar dependencias:
+2. Instalar PyTorch CPU y dependencias:
 ```bash
+pip install torch --index-url https://download.pytorch.org/whl/cpu
 pip install -r requirements.txt
 ```
 
@@ -141,13 +150,13 @@ uvicorn app.main:app --reload
 
 ---
 
-## 📚 Documentación Completa de la API
+## Documentacion de la API
 
-La API dispone de documentación interactiva en:
+La API dispone de documentacion interactiva en:
 - **Swagger UI**: http://localhost:8000/docs
 - **ReDoc**: http://localhost:8000/redoc
 
-### 🔴 Endpoints de Documentos
+### Endpoints de Documentos
 
 #### 1. Subir Documento
 
@@ -155,16 +164,18 @@ La API dispone de documentación interactiva en:
 POST /api/v1/documents/upload
 ```
 
-**Descripción:** Sube uno o múltiples archivos al sistema. El procesamiento se hace en background.
+Sube uno o multiples archivos al sistema (max 10 por subida). El procesamiento se hace en background.
 
 **Rate Limit:** 10 solicitudes por minuto
 
-**Parámetros (multipart/form-data):**
+**Parametros (multipart/form-data):**
 
-| Campo | Tipo | Requerido | Descripción |
+| Campo | Tipo | Requerido | Descripcion |
 |-------|------|-----------|-------------|
-| files | File | Sí | Archivos a subir (máx 10) |
+| files | File | Si | Archivos a subir (max 10) |
 | metadata | JSON | No | Metadatos del documento |
+
+**Formatos soportados:** PDF, TXT, CSV, DOCX, XLSX, BC3
 
 **Metadatos opcionales:**
 ```json
@@ -176,20 +187,31 @@ POST /api/v1/documents/upload
 }
 ```
 
-**Ejemplo de Request:**
+**Ejemplo:**
 ```bash
 curl -X POST http://localhost:8000/api/v1/documents/upload \
   -F "files=@documento.pdf" \
-  -F 'metadata={"tipo": "catalogo", "categoria": "residencial"}'
+  -F "files=@precios.bc3"
 ```
 
 **Response (200):**
 ```json
 {
-  "document_id": "uuid-del-documento",
-  "filename": "documento.pdf",
-  "status": "pending",
-  "message": "Documento subido. Procesamiento en background."
+  "total": 2,
+  "results": [
+    {
+      "document_id": "uuid-del-documento",
+      "filename": "documento.pdf",
+      "status": "pending",
+      "message": "Documento subido. Procesamiento en background."
+    },
+    {
+      "document_id": "uuid-del-documento-2",
+      "filename": "precios.bc3",
+      "status": "pending",
+      "message": "Documento subido. Procesamiento en background."
+    }
+  ]
 }
 ```
 
@@ -201,42 +223,19 @@ curl -X POST http://localhost:8000/api/v1/documents/upload \
 GET /api/v1/documents
 ```
 
-**Descripción:** Lista documentos con paginación.
+Lista documentos con paginacion.
 
 **Rate Limit:** 30 solicitudes por minuto
 
-**Parámetros (query):**
+**Parametros (query):**
 
-| Campo | Tipo | Default | Descripción |
+| Campo | Tipo | Default | Descripcion |
 |-------|------|---------|-------------|
 | skip | int | 0 | Registros a omitir |
-| limit | int | 20 | Límite de registros (máx 100) |
+| limit | int | 20 | Limite de registros (max 100) |
 | status | string | null | Filtrar por estado |
 
 **Estados posibles:** `pending`, `processing`, `completed`, `failed`
-
-**Ejemplo:**
-```bash
-curl "http://localhost:8000/api/v1/documents?limit=10&status=completed"
-```
-
-**Response (200):**
-```json
-{
-  "total": 5,
-  "items": [
-    {
-      "id": "uuid",
-      "filename": "documento.pdf",
-      "status": "completed",
-      "progress": 100,
-      "chunk_count": 45,
-      "embedding_count": 45,
-      "created_at": "2024-01-01T12:00:00Z"
-    }
-  ]
-}
-```
 
 ---
 
@@ -246,12 +245,7 @@ curl "http://localhost:8000/api/v1/documents?limit=10&status=completed"
 GET /api/v1/documents/{document_id}
 ```
 
-**Descripción:** Obtiene los detalles de un documento específico.
-
-**Ejemplo:**
-```bash
-curl http://localhost:8000/api/v1/documents/{uuid}
-```
+Obtiene los detalles de un documento especifico.
 
 ---
 
@@ -261,25 +255,12 @@ curl http://localhost:8000/api/v1/documents/{uuid}
 GET /api/v1/documents/{document_id}/status
 ```
 
-**Descripción:** Obtiene el estado de procesamiento de un documento. Útil para polling desde el frontend.
-
-**Ejemplo de Response:**
-```json
-{
-  "document_id": "uuid",
-  "status": "processing",
-  "progress": 50,
-  "message": "Generando embeddings...",
-  "created_at": "2024-01-01T12:00:00Z",
-  "updated_at": "2024-01-01T12:05:00Z"
-}
-```
+Obtiene el estado de procesamiento de un documento. Util para polling desde el frontend.
 
 **Flujo de Estados:**
 ```
-pending → processing → completed
-                    ↓
-                  failed
+pending -> processing -> completed
+                     \-> failed
 ```
 
 ---
@@ -290,20 +271,9 @@ pending → processing → completed
 DELETE /api/v1/documents/{document_id}
 ```
 
-**Descripción:** Elimina un documento y todos sus datos asociados (chunks, embeddings).
+Elimina un documento y todos sus datos asociados (chunks, embeddings, archivo fisico).
 
-**Ejemplo:**
-```bash
-curl -X DELETE http://localhost:8000/api/v1/documents/{uuid}
-```
-
-**Response (200):**
-```json
-{
-  "document_id": "uuid",
-  "message": "Documento eliminado correctamente"
-}
-```
+**Rate Limit:** 10 solicitudes por minuto
 
 ---
 
@@ -313,79 +283,40 @@ curl -X DELETE http://localhost:8000/api/v1/documents/{uuid}
 POST /api/v1/documents/{document_id}/reindex
 ```
 
-**Descripción:** Re-procesa un documento y regenera sus embeddings.
+Re-procesa un documento y regenera sus embeddings.
 
 **Rate Limit:** 5 solicitudes por minuto
 
 ---
 
-### 🔵 Endpoints de Base de Conocimiento
+### Endpoints de Base de Conocimiento
 
-#### 1. Búsqueda Semántica
+#### 1. Busqueda Semantica
 
 ```
 GET /api/v1/knowledge/search
 ```
 
-**Descripción:** Busca en la base de conocimiento sin usar LLM. Útil para previsualizar qué documentos serían recuperados.
+Busca en la base de conocimiento sin usar LLM. Util para previsualizar que documentos serian recuperados.
 
-**Parámetros:**
+**Rate Limit:** 30 solicitudes por minuto
 
-| Campo | Tipo | Default | Descripción |
+**Parametros:**
+
+| Campo | Tipo | Default | Descripcion |
 |-------|------|---------|-------------|
-| query | string | Requerido | Texto de búsqueda |
-| max_results | int | 10 | Máx resultados (máx 50) |
-
-**Ejemplo:**
-```bash
-curl "http://localhost:8000/api/v1/knowledge/search?query=precio%20cemento&max_results=5"
-```
-
-**Response:**
-```json
-{
-  "query": "precio cemento",
-  "total_results": 3,
-  "results": [
-    {
-      "chunk_id": "uuid",
-      "document_id": "uuid",
-      "filename": "catalogo_precios.pdf",
-      "content": "Cemento Portland tipo I...",
-      "score": 0.95,
-      "source_page": 5
-    }
-  ]
-}
-```
+| query | string | Requerido | Texto de busqueda |
+| max_results | int | 10 | Max resultados (max 50) |
 
 ---
 
-#### 2. Estadísticas
+#### 2. Estadisticas
 
 ```
 GET /api/v1/knowledge/stats
 ```
 
-**Descripción:** Obtiene estadísticas de la base de conocimiento.
-
-**Response:**
-```json
-{
-  "total_documents": 10,
-  "total_chunks": 450,
-  "total_embeddings": 450,
-  "by_type": {
-    "catalogo": 5,
-    "precio_unitario": 3,
-    "norma_tecnica": 2
-  },
-  "by_category": {
-    "residencial": 6,
-    "comercial": 4
-  }
-}
-```
+Obtiene estadisticas de la base de conocimiento (documentos, chunks, embeddings, por tipo y categoria).
 
 ---
 
@@ -395,11 +326,11 @@ GET /api/v1/knowledge/stats
 GET /api/v1/knowledge/chunks/{document_id}
 ```
 
-**Descripción:** Obtiene los chunks de un documento específico.
+Obtiene los chunks de un documento especifico.
 
 ---
 
-### 🟢 Endpoints RAG
+### Endpoints RAG
 
 #### 1. Consulta RAG
 
@@ -407,63 +338,87 @@ GET /api/v1/knowledge/chunks/{document_id}
 POST /api/v1/rag/query
 ```
 
-**Descripción:** Realiza una consulta al sistema RAG. El sistema busca fragmentos relevantes y genera una respuesta usando Google Gemini.
+Realiza una consulta al sistema RAG. El sistema busca fragmentos relevantes y genera una respuesta usando Google Gemini como un arquitecto tecnico colegiado.
 
 **Rate Limit:** 20 solicitudes por minuto
 
 **Request Body:**
 ```json
 {
-  "query": "¿Cuál es el precio del cemento tipo I?",
+  "query": "precio del pavimento flotante laminado",
   "max_results": 5,
-  "filters": {
-    "document_type": "catalogo"
-  },
   "include_sources": true
 }
 ```
 
-**Parámetros:**
+**Parametros:**
 
-| Campo | Tipo | Default | Descripción |
+| Campo | Tipo | Default | Descripcion |
 |-------|------|---------|-------------|
-| query | string | Requerido | Pregunta del usuario (máx 5000 chars) |
-| max_results | int | 5 | Documentos a recuperar (máx 20) |
+| query | string | Requerido | Pregunta del usuario (max 5000 chars) |
+| max_results | int | 5 | Documentos a recuperar (max 20) |
 | filters | object | null | Filtros por metadatos |
 | include_sources | bool | true | Incluir fragmentos fuente |
 
-**Ejemplo:**
-```bash
-curl -X POST http://localhost:8000/api/v1/rag/query \
-  -H "Content-Type: application/json" \
-  -d '{"query": "¿Cuál es el precio del cemento?", "max_results": 5}'
+La respuesta incluye desglose de partidas (material, mano de obra, instalacion), sugerencias de alternativas cuando no se encuentra exactamente lo solicitado, y referencias a las normativas vigentes (CTE, LOE, RITE, RIPCI, RSIF, EHE-08, EAE, REBT).
+
+---
+
+#### 2. Generar BC3
+
 ```
+POST /api/v1/rag/generate-bc3
+```
+
+Genera un archivo BC3/FIEBDC-3 a partir de partidas buscadas en la base de conocimiento.
+
+**Rate Limit:** 10 solicitudes por minuto
+
+**Request Body:**
+```json
+{
+  "queries": [
+    "pavimento flotante laminado",
+    "tabiqueria de pladur",
+    "instalacion electrica vivienda"
+  ],
+  "project_name": "Reforma vivienda",
+  "max_results_per_query": 3
+}
+```
+
+**Parametros:**
+
+| Campo | Tipo | Default | Descripcion |
+|-------|------|---------|-------------|
+| queries | list[string] | Requerido | Partidas a buscar (max 50) |
+| max_results_per_query | int | 3 | Resultados por busqueda (max 10) |
+| project_name | string | "Presupuesto generado" | Nombre del proyecto en cabecera BC3 |
 
 **Response:**
 ```json
 {
-  "query": "¿Cuál es el precio del cemento?",
-  "answer": "Según el catálogo de precios 2024, el cemento Portland tipo I tiene un precio de $12.50 por saco de 50kg.",
-  "sources": [
-    {
-      "chunk_id": "uuid",
-      "document_id": "uuid",
-      "filename": "catalogo_precios_2024.pdf",
-      "content": "Cemento Portland tipo I - Precio: $12.50/saco",
-      "score": 0.92,
-      "source_page": 15
-    }
-  ],
-  "metadata": {
-    "results_count": 5,
-    "max_score": 0.92
-  }
+  "bc3_content": "~V|FIEBDC-3/2020|...",
+  "total_items": 5,
+  "queries_processed": 3
 }
 ```
 
 ---
 
-### ⚪ Endpoints de Sistema
+#### 3. Descargar BC3
+
+```
+POST /api/v1/rag/download-bc3
+```
+
+Genera y descarga directamente un archivo `.bc3`. Mismos parametros que `generate-bc3` pero devuelve el archivo como descarga.
+
+**Rate Limit:** 10 solicitudes por minuto
+
+---
+
+### Endpoints de Sistema
 
 #### Health Check
 
@@ -471,25 +426,55 @@ curl -X POST http://localhost:8000/api/v1/rag/query \
 GET /health
 ```
 
-**Descripción:** Verifica que la API esté funcionando.
-
-**Response:**
-```json
-{
-  "status": "healthy",
-  "version": "1.0.0"
-}
-```
+Verifica que la API este funcionando. Devuelve `{"status": "healthy", "version": "1.0.0"}`.
 
 ---
 
-## 📋 Códigos de Estado HTTP
+## Formatos de Documento Soportados
 
-| Código | Descripción |
+| Tipo | Extensiones | Procesador | Notas |
+|------|-------------|------------|-------|
+| PDF | `.pdf` | pdfplumber | Extrae texto + tablas como markdown, filtra boilerplate |
+| Texto | `.txt`, `.md` | Parser nativo | UTF-8 y Latin-1 |
+| CSV/Excel | `.csv`, `.xlsx`, `.xls` | pandas | 1 fila = 1 chunk |
+| Word | `.docx` | python-docx | Extrae texto |
+| BC3 | `.bc3` | Parser FIEBDC-3 | 1 concepto = 1 chunk con codigo, precio, descomposicion |
+
+### Formato BC3/FIEBDC-3
+
+El sistema soporta archivos BC3, el estandar espanol (FIEBDC-3) para intercambio de bases de datos de construccion. Compatible con archivos generados por Presto, Arquimedes, TCQ y otros programas de mediciones.
+
+Registros soportados:
+
+- `~V` - Version del formato y software origen
+- `~C` - Conceptos: `~C|CODIGO|UNIDAD|RESUMEN|PRECIO|FECHA|FLAGS|`
+- `~D` - Descomposicion de conceptos (componentes con cantidades)
+- `~T` - Textos descriptivos largos
+- `~L` - Jerarquia (capitulos/subcapitulos)
+- `~K` - Configuracion (moneda, decimales)
+
+Cada concepto se convierte en un chunk independiente con formato estructurado:
+```
+Codigo: 01003
+Concepto: Demolicion de forjado metalico
+Unidad: m2
+Precio: 71.86 EUR
+Descripcion: [texto largo del registro ~T]
+Descomposicion:
+  - MAT001 | Martillo neumatico | Cantidad: 0.5 | Precio: 12.30 EUR
+  - MO001 | Peon especializado | Cantidad: 1.0 | Precio: 22.50 EUR
+```
+
+Esto permite que la busqueda semantica encuentre partidas tanto por nombre ("demolicion forjado") como por tipo de trabajo o material.
+
+---
+
+## Codigos de Estado HTTP
+
+| Codigo | Descripcion |
 |--------|-------------|
-| 200 | Éxito |
-| 201 | Creado |
-| 400 | Bad Request - Error en parámetros |
+| 200 | Exito |
+| 400 | Bad Request - Error en parametros o upload |
 | 404 | No encontrado |
 | 422 | Validation Error |
 | 429 | Rate Limit excedido |
@@ -497,123 +482,49 @@ GET /health
 
 ---
 
-## 🛡️ Rate Limits
+## Rate Limits
 
-| Endpoint | Límite |
+| Endpoint | Limite |
 |----------|--------|
 | `/api/v1/documents/upload` | 10/min |
-| `/api/v1/documents` | 30/min |
+| `/api/v1/documents` (GET) | 30/min |
+| `/api/v1/documents/{id}` (DELETE) | 10/min |
+| `/api/v1/documents/{id}/reindex` | 5/min |
 | `/api/v1/rag/query` | 20/min |
+| `/api/v1/rag/generate-bc3` | 10/min |
+| `/api/v1/rag/download-bc3` | 10/min |
 | `/api/v1/knowledge/*` | 30/min |
 
 ---
 
-## 🔧 Uso del Frontend
+## Configuracion
 
-### Ejemplo: Upload con JavaScript
-
-```javascript
-// Subir archivo
-async function uploadFile(file, metadata = {}) {
-  const formData = new FormData();
-  formData.append('files', file);
-  
-  if (Object.keys(metadata).length > 0) {
-    formData.append('metadata', JSON.stringify(metadata));
-  }
-  
-  const response = await fetch('/api/v1/documents/upload', {
-    method: 'POST',
-    body: formData
-  });
-  
-  const result = await response.json();
-  
-  if (result.status === 'failed') {
-    console.error('Error:', result.message);
-    return null;
-  }
-  
-  // Polling para estado
-  return pollStatus(result.document_id);
-}
-
-// Polling de estado
-async function pollStatus(documentId, onProgress) {
-  while (true) {
-    const response = await fetch(`/api/v1/documents/${documentId}/status`);
-    const status = await response.json();
-    
-    onProgress(status);
-    
-    if (status.status === 'completed' || status.status === 'failed') {
-      return status;
-    }
-    
-    await new Promise(r => setTimeout(r, 2000));
-  }
-}
-
-// Uso
-const fileInput = document.querySelector('#file');
-const file = fileInput.files[0];
-
-await uploadFile(file, { tipo: 'catalogo', categoria: 'residencial' }, 
-  (status) => console.log(`Progreso: ${status.progress}%`)
-);
-```
-
-### Ejemplo: Consulta RAG
-
-```javascript
-async function askQuestion(question) {
-  const response = await fetch('/api/v1/rag/query', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      query: question,
-      max_results: 5,
-      include_sources: true
-    })
-  });
-  
-  const result = await response.json();
-  
-  console.log('Respuesta:', result.answer);
-  console.log('Fuentes:', result.sources);
-  
-  return result;
-}
-
-// Uso
-const result = await askQuestion('¿Cuál es el precio del cemento?');
-```
-
----
-
-## 📝 Configuración
-
-Ver `.env.example` para todas las variables de entorno:
+Variables de entorno principales (ver `.env.example` para la lista completa):
 
 ```env
 # Base de datos
-DATABASE_URL=postgresql://postgres:postgres@localhost:5432/rag_presupuestos
+DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/rag_presupuestos
+DATABASE_URL_SYNC=postgresql+psycopg2://postgres:postgres@db:5432/rag_presupuestos
 
 # Google Gemini
 GEMINI_API_KEY=tu_api_key
-GEMINI_MODEL=gemini-1.5-pro
+GEMINI_MODEL=gemini-2.5-pro
 GEMINI_TEMPERATURE=0.7
+GEMINI_MAX_TOKENS=2048
 
 # Embeddings
-EMBEDDING_MODEL=all-MiniLM-L6-v2
+EMBEDDING_MODEL=paraphrase-multilingual-MiniLM-L12-v2
+EMBEDDING_DIMENSIONS=384
 
-# API
+# Upload
 MAX_FILE_SIZE_MB=50
-ALLOWED_EXTENSIONS=pdf,txt,csv,docx,xlsx
+ALLOWED_EXTENSIONS=pdf,txt,csv,docx,xlsx,bc3
 ```
+
+**Importante:** El modelo de Gemini se define exclusivamente en el `.env`. El codigo siempre usa el modelo configurado ahi, sin excepciones.
 
 ---
 
-## 📄 Licencia
+## Licencia
 
 MIT License

@@ -37,6 +37,7 @@ class DocumentService:
         "csv": "text/csv",
         "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "bc3": "application/octet-stream",
     }
 
     def __init__(self, session: AsyncSession):
@@ -95,11 +96,17 @@ class DocumentService:
         # Verificar coincidencia exacta o tipo genérico
         if content_type == expected_mime:
             return True
-        
+
         # Para text/plain y text/csv aceptamos variaciones
         if expected_mime.startswith("text/") and content_type.startswith("text/"):
             return True
-        
+
+        # BC3 puede llegar como octet-stream o text/plain
+        if extension.lower() == "bc3" and content_type in (
+            "application/octet-stream", "text/plain",
+        ):
+            return True
+
         return False
 
     def _validate_file_size(self, content: bytes) -> None:
@@ -392,6 +399,34 @@ class DocumentService:
             # Validar que se generaron chunks
             if not raw_chunks:
                 raise ValueError("No se pudo extraer contenido del documento")
+
+            # Subdividir chunks grandes según CHUNK_SIZE y CHUNK_OVERLAP
+            chunk_size = self.settings.chunk_size
+            chunk_overlap = self.settings.chunk_overlap
+            split_chunks = []
+            for raw_chunk in raw_chunks:
+                content = raw_chunk["content"]
+                metadata = raw_chunk.get("metadata", {})
+                if len(content) <= chunk_size:
+                    split_chunks.append(raw_chunk)
+                else:
+                    # Dividir respetando saltos de línea cuando sea posible
+                    start = 0
+                    while start < len(content):
+                        end = start + chunk_size
+                        if end < len(content):
+                            # Buscar un salto de línea cercano para cortar limpio
+                            newline_pos = content.rfind("\n", start + chunk_size // 2, end)
+                            if newline_pos != -1:
+                                end = newline_pos + 1
+                        fragment = content[start:end].strip()
+                        if fragment:
+                            split_chunks.append({
+                                "content": fragment,
+                                "metadata": metadata.copy(),
+                            })
+                        start = end - chunk_overlap
+            raw_chunks = split_chunks
 
             # Limitar número de chunks para prevenir DoS
             max_chunks = 10000

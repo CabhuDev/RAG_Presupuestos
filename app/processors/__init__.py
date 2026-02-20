@@ -6,6 +6,7 @@ from app.processors.pdf_processor import PDFProcessor
 from app.processors.txt_processor import TextProcessor
 from app.processors.csv_processor import CSVProcessor
 from app.processors.docx_processor import DocxProcessor
+from app.processors.bc3_processor import BC3Processor
 
 # Registry de processors
 PROCESSORS: dict[str, Processor] = {
@@ -17,6 +18,7 @@ PROCESSORS: dict[str, Processor] = {
     "xlsx": CSVProcessor(),
     "xls": CSVProcessor(),
     "docx": DocxProcessor(),
+    "bc3": BC3Processor(),
 }
 
 
@@ -61,6 +63,7 @@ __all__ = [
     "TextProcessor",
     "CSVProcessor",
     "DocxProcessor",
+    "BC3Processor",
     "PROCESSORS",
     "get_processor",
     "can_process",

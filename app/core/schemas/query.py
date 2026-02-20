@@ -88,3 +88,35 @@ class KnowledgeSearchResponse(BaseModel):
     query: str
     total_results: int
     results: list[ChunkResult]
+
+
+class BC3GenerateRequest(BaseModel):
+    """
+    Solicitud de generación de archivo BC3.
+    El usuario envía una lista de partidas/conceptos a buscar.
+    """
+    queries: list[str] = Field(
+        min_length=1,
+        max_length=50,
+        description="Lista de partidas o conceptos a buscar (máx. 50)"
+    )
+    max_results_per_query: int = Field(
+        default=3,
+        ge=1,
+        le=10,
+        description="Resultados máximos por cada búsqueda"
+    )
+    project_name: str = Field(
+        default="Presupuesto generado",
+        max_length=200,
+        description="Nombre del proyecto para la cabecera BC3"
+    )
+
+
+class BC3GenerateResponse(BaseModel):
+    """
+    Respuesta de generación BC3.
+    """
+    bc3_content: str = Field(description="Contenido del archivo BC3")
+    total_items: int = Field(description="Número de partidas incluidas")
+    queries_processed: int = Field(description="Número de consultas procesadas")

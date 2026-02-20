@@ -1,7 +1,9 @@
 """
 Endpoints para búsqueda en la base de conocimiento.
 """
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 
@@ -18,9 +20,14 @@ from loguru import logger
 
 router = APIRouter(prefix="/knowledge", tags=["Base de Conocimiento"])
 
+# Rate limiter
+limiter = Limiter(key_func=get_remote_address)
+
 
 @router.get("/search", response_model=KnowledgeSearchResponse, summary="Búsqueda semántica")
+@limiter.limit("20/minute")
 async def search_knowledge(
+    request: Request,
     query: str = Query(..., min_length=1, description="Texto de búsqueda"),
     max_results: int = Query(10, ge=1, le=50, description="Máximo de resultados"),
     session: AsyncSession = Depends(get_db_session),

@@ -44,9 +44,9 @@ class Settings(BaseSettings):
         description="Temperatura para generación de respuestas"
     )
     gemini_max_tokens: int = Field(
-        default=2048,
+        default=8192,
         ge=1,
-        le=8192,
+        le=65536,
         description="Máximo de tokens en respuesta"
     )
 

@@ -25,8 +25,8 @@ pandas==2.1.4
 sentence-transformers==3.3.1
 numpy==1.26.4
 
-# LLM - Google Gemini
-google-generativeai==0.8.3
+# LLM - Google Gemini (nuevo SDK oficial)
+google-genai>=1.0.0
 
 # Rate Limiting
 slowapi==0.1.9

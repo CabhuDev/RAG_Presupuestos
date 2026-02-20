@@ -15,6 +15,8 @@ from app.core.schemas.query import (
     RAGQueryResponse,
     KnowledgeSearchRequest,
     KnowledgeSearchResponse,
+    BC3GenerateRequest,
+    BC3GenerateResponse,
 )
 from app.core.schemas.response import (
     SuccessResponse,
@@ -35,6 +37,8 @@ __all__ = [
     "RAGQueryResponse",
     "KnowledgeSearchRequest",
     "KnowledgeSearchResponse",
+    "BC3GenerateRequest",
+    "BC3GenerateResponse",
     "SuccessResponse",
     "ErrorResponse",
     "HealthResponse",
