@@ -55,8 +55,15 @@ class RAGService:
                 "metadata": {"results_count": 0},
             }
 
-        # 2. Extraer contexto
-        context = [r["content"] for r in results]
+        # 2. Extraer contexto con metadatos para que el LLM sepa la fuente
+        context = []
+        for r in results:
+            source_info = f"Documento: {r['filename']}"
+            if r.get("source_page"):
+                source_info += f" | Página: {r['source_page']}"
+            if r.get("source_row"):
+                source_info += f" | Fila: {r['source_row']}"
+            context.append(f"[{source_info}]\n{r['content']}")
 
         # 3. Generar respuesta con LLM
         try:
@@ -64,6 +71,10 @@ class RAGService:
                 query=query,
                 context=context,
             )
+        except ValueError as e:
+            # Errores controlados (rate limit, etc.)
+            logger.warning(f"Error controlado al generar respuesta: {e}")
+            answer = str(e)
         except Exception as e:
             logger.error(f"Error al generar respuesta: {e}")
             answer = "Error al generar la respuesta. Por favor, inténtalo de nuevo."

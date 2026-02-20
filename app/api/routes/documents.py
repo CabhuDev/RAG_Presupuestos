@@ -58,6 +58,13 @@ async def upload_document(
     if not files:
         raise HTTPException(status_code=400, detail="No se proporcionaron archivos")
 
+    max_files = 10
+    if len(files) > max_files:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Máximo {max_files} archivos por subida. Has enviado {len(files)}."
+        )
+
     results = []
     
     for file in files:
@@ -113,11 +120,7 @@ async def upload_document(
                 message="Error interno del servidor"
             ))
     
-    # Retornar primer resultado o lista si hay múltiples
-    if len(results) == 1:
-        return results[0]
-    
-    # Retornar JSON con todos los resultados
+    # Retornar siempre el mismo formato para consistencia con el frontend
     return JSONResponse(
         content={
             "total": len(results),

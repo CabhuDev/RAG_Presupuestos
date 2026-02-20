@@ -68,6 +68,24 @@ def create_app() -> FastAPI:
                 "error": "rate_limit_exceeded"
             }
         )
+
+    # Manejador de errores de parsing multipart (subida de archivos)
+    @app.exception_handler(400)
+    async def bad_request_handler(request: Request, exc):
+        error_msg = str(exc.detail) if hasattr(exc, 'detail') else str(exc)
+        if "boundary" in error_msg.lower() or "multipart" in error_msg.lower():
+            logger.warning(f"Error al procesar subida de archivos: {error_msg}")
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "detail": "Error al procesar los archivos. Intenta subir menos archivos a la vez (máximo 15) o archivos más pequeños.",
+                    "error": "upload_parse_error"
+                }
+            )
+        return JSONResponse(
+            status_code=400,
+            content={"detail": error_msg}
+        )
     
     # CORS configurado de forma segura
     app.add_middleware(

@@ -20,13 +20,13 @@ services:
       - uploads:/app/uploads
       - logs:/app/logs
     # Importante: Ejecutar migraciones primero, luego uvicorn con --reload
-    command: sh -c "alembic upgrade head && uvicorn app.main:app --reload --reload-dir /app/app --host 0.0.0.0 --port 8000"
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --reload --reload-dir /app/app --reload-exclude '*.pyc' --reload-exclude '.git' --reload-exclude 'uploads' --reload-exclude 'logs' --host 0.0.0.0 --port 8000"
     depends_on:
       db:
         condition: service_healthy
     restart: unless-stopped
-    # Aumentar límite de memoria para el watcher de uvicorn
-    mem_limit: 1g
+    # Memoria para modelo de embeddings + PyTorch + uvicorn watcher
+    mem_limit: 3g
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s

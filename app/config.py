@@ -34,7 +34,7 @@ class Settings(BaseSettings):
         description="API key de Google Gemini"
     )
     gemini_model: str = Field(
-        default="gemini-1.5-pro",
+        default="gemini-2.5-flash-lite",
         description="Modelo de Gemini a utilizar"
     )
     gemini_temperature: float = Field(
@@ -52,7 +52,7 @@ class Settings(BaseSettings):
 
     # Embeddings
     embedding_model: str = Field(
-        default="all-MiniLM-L6-v2",
+        default="paraphrase-multilingual-MiniLM-L12-v2",
         description="Modelo de embeddings a utilizar"
     )
     embedding_dimensions: int = Field(

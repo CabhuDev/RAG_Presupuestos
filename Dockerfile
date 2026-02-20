@@ -36,6 +36,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copiar requirements e instalar dependencias Python
 # ============================================
 COPY requirements.txt .
+# Instalar PyTorch CPU-only primero (mucho más ligero que la versión completa)
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
 RUN pip install --no-cache-dir -r requirements.txt
 
 # ============================================
