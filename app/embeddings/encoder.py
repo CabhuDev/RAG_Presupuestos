@@ -13,7 +13,7 @@ from loguru import logger
 class EmbeddingEncoder:
     """
     Encoder de embeddings basado en sentence-transformers.
-    Usa el modelo all-MiniLM-L6-v2 por defecto (384 dimensiones).
+    Usa el modelo paraphrase-multilingual-MiniLM-L12-v2 por defecto (384 dimensiones).
     """
 
     _instance: Optional["EmbeddingEncoder"] = None

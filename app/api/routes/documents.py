@@ -85,8 +85,12 @@ async def upload_document(
                 metadata=metadata_dict,
             )
             
-            # Iniciar procesamiento en background
-            asyncio.create_task(process_document_background(document.id))
+            # Iniciar procesamiento en background con callback de error
+            task = asyncio.create_task(process_document_background(document.id))
+            task.add_done_callback(
+                lambda t: logger.error(f"Error en task background [{document.id}]: {t.exception()}")
+                if not t.cancelled() and t.exception() else None
+            )
             
             results.append(DocumentUploadResponse(
                 document_id=document.id,
@@ -277,7 +281,11 @@ async def reindex_document(
     if not document:
         raise HTTPException(status_code=404, detail="Documento no encontrado")
     
-    # Reprocesar en background
-    asyncio.create_task(process_document_background(doc_uuid))
+    # Reprocesar en background con callback de error
+    task = asyncio.create_task(process_document_background(doc_uuid))
+    task.add_done_callback(
+        lambda t: logger.error(f"Error en task reindex [{doc_uuid}]: {t.exception()}")
+        if not t.cancelled() and t.exception() else None
+    )
     
     return DocumentResponse.model_validate(document)

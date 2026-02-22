@@ -1,22 +1,26 @@
 # RAG para Presupuestos de Obra
 
-Sistema RAG (Retrieval Augmented Generation) para crear presupuestos de obra con base de conocimiento.
+Sistema RAG (Retrieval Augmented Generation) para crear presupuestos de obra con base de conocimiento. **Version 2.0.0**
 
 ## Descripcion
 
-Este proyecto permite crear un sistema de conocimiento para presupuestos de construccion. Los usuarios pueden subir documentos (PDF, TXT, CSV, DOCX, BC3) que se procesan para generar embeddings y permitir busquedas semanticas.
+Este proyecto permite crear un sistema de conocimiento para presupuestos de construccion. Los usuarios pueden subir documentos (PDF, TXT, CSV, DOCX, BC3) que se procesan para generar embeddings y permitir busquedas semanticas e hibridas (vectorial + full-text).
 
-El sistema usa **Google Gemini** como LLM para generar respuestas precisas basadas en los documentos subidos, actuando como un arquitecto tecnico colegiado con experiencia en el sector de la construccion en Espana.
+El sistema usa **Google Gemini** como LLM para generar respuestas precisas basadas en los documentos subidos, actuando como un arquitecto tecnico colegiado con experiencia en el sector de la construccion en Espana. Cuando no encuentra informacion en la base de conocimiento, genera una **estimacion de precio de mercado** desglosada y justificada con aviso claro al usuario.
 
 ## Caracteristicas
 
 - Upload de archivos con soporte drag & drop (max 10 por subida)
-- Procesamiento automatico de documentos (PDF, TXT, CSV, DOCX, BC3/FIEBDC-3)
+- Procesamiento automatico de documentos (PDF, TXT, CSV, DOCX, XLSX, BC3/FIEBDC-3)
 - Extraccion de tablas de PDF como markdown
 - Filtrado de boilerplate en PDFs para mejorar calidad de embeddings
-- Busqueda semantica usando embeddings vectoriales multilingues
+- **Busqueda hibrida**: vectorial (semantica) + PostgreSQL FTS con fusion RRF
 - Consultas RAG con Google Gemini (retry automatico ante rate limiting)
-- Generacion de archivos BC3 a partir de consultas RAG
+- **Estimacion de precio de mercado** cuando no hay contexto en la BD (con aviso claro)
+- **Memoria de conversacion** por sesion (in-memory con TTL)
+- Generacion y descarga de archivos BC3 compatibles con Presto (FIEBDC-3, Latin-1, CRLF)
+- Filtrado por zona geografica y anio de precio
+- Temperature baja (0.1) para respuestas de precio consistentes
 - Barra de progreso en tiempo real
 - API REST completa con FastAPI
 - Docker para despliegue con hot-reload en desarrollo
@@ -25,11 +29,12 @@ El sistema usa **Google Gemini** como LLM para generar respuestas precisas basad
 
 | Componente | Tecnologia |
 |------------|------------|
-| API | FastAPI |
+| API | FastAPI 2.0.0 |
 | Base de datos | PostgreSQL + pgvector 0.2.5 |
+| Busqueda | pgvector (semantica) + PostgreSQL FTS (full-text) + RRF |
 | ORM | SQLAlchemy 2.0 (async) |
-| LLM | Google Gemini (modelo configurable en .env) |
-| Embeddings | sentence-transformers (paraphrase-multilingual-MiniLM-L12-v2) |
+| LLM | Google Gemini 2.5 Flash (configurable en .env) |
+| Embeddings | sentence-transformers (paraphrase-multilingual-MiniLM-L12-v2, 384 dim) |
 | Migraciones | Alembic (idempotentes) |
 | Contenedores | Docker Compose |
 
@@ -47,18 +52,19 @@ RAG_construccion/
 │   ├── core/
 │   │   ├── models/                # Modelos SQLAlchemy
 │   │   │   ├── base.py            # Base, UUIDMixin, TimestampMixin
-│   │   │   ├── document.py        # Modelo Document
-│   │   │   ├── chunk.py           # Modelo Chunk
+│   │   │   ├── document.py        # Modelo Document (+ zona geo, anio precio)
+│   │   │   ├── chunk.py           # Modelo Chunk (+ search_vector FTS)
 │   │   │   └── embedding.py       # Modelo Embedding (pgvector)
 │   │   ├── schemas/               # Schemas Pydantic
 │   │   │   ├── document.py        # Schemas de documentos
-│   │   │   ├── query.py           # Schemas de consultas y BC3
+│   │   │   ├── query.py           # Schemas de consultas, BC3 y sesion
 │   │   │   └── response.py        # Schemas de respuestas
+│   │   ├── session_store.py       # Store in-memory para chat (TTL 2h)
 │   │   └── services/              # Logica de negocio
 │   │       ├── document_service.py      # Procesamiento de documentos
-│   │       ├── vector_search_service.py # Busqueda vectorial
-│   │       ├── rag_service.py           # Orquestacion RAG
-│   │       └── bc3_generator.py         # Generacion de archivos BC3
+│   │       ├── vector_search_service.py # Busqueda hibrida (vector + FTS + RRF)
+│   │       ├── rag_service.py           # Orquestacion RAG + estimacion mercado
+│   │       └── bc3_generator.py         # Generacion BC3 + enriquecimiento LLM
 │   ├── database/
 │   │   └── connection.py          # Conexion async/sync SQLAlchemy
 │   ├── embeddings/
@@ -81,7 +87,9 @@ RAG_construccion/
 │   ├── env.py
 │   ├── script.py.mako
 │   └── versions/
-│       └── 001_initial_migration.py
+│       ├── 001_initial_migration.py
+│       ├── 002_add_fts_search.py       # FTS: tsvector, GIN index, trigger
+│       └── 003_add_geo_year_to_documents.py  # Zona geo + anio precio
 ├── alembic.ini                    # Configuracion Alembic
 ├── docker-compose.yml             # Orquestacion Docker
 ├── Dockerfile                     # Imagen de la API (PyTorch CPU-only)
@@ -183,7 +191,9 @@ Sube uno o multiples archivos al sistema (max 10 por subida). El procesamiento s
   "tipo": "catalogo|precio_unitario|norma_tecnica|especificacion",
   "categoria": "residencial|comercial|industrial|infraestructura",
   "fecha_vigencia": "2024-01-01",
-  "proveedor": "Nombre del proveedor"
+  "proveedor": "Nombre del proveedor",
+  "zona_geografica": "nacional|andalucia|madrid|cataluna|valencia|galicia|pais_vasco|aragon|castilla_leon|murcia|canarias|baleares",
+  "anio_precio": 2025
 }
 ```
 
@@ -347,7 +357,9 @@ Realiza una consulta al sistema RAG. El sistema busca fragmentos relevantes y ge
 {
   "query": "precio del pavimento flotante laminado",
   "max_results": 5,
-  "include_sources": true
+  "include_sources": true,
+  "min_score": 0.5,
+  "session_id": null
 }
 ```
 
@@ -357,8 +369,16 @@ Realiza una consulta al sistema RAG. El sistema busca fragmentos relevantes y ge
 |-------|------|---------|-------------|
 | query | string | Requerido | Pregunta del usuario (max 5000 chars) |
 | max_results | int | 5 | Documentos a recuperar (max 20) |
-| filters | object | null | Filtros por metadatos |
+| filters | object | null | Filtros por metadatos (document_type, category, geographic_zone, price_year) |
 | include_sources | bool | true | Incluir fragmentos fuente |
+| min_score | float | 0.5 | Score minimo de relevancia (0.0-1.0). Resultados por debajo se descartan |
+| session_id | string | null | ID de sesion para memoria conversacional. Si no se envia, se genera uno nuevo |
+
+**Comportamiento:**
+- Si hay resultados con score >= `min_score`: respuesta basada en contexto de la BD
+- Si NO hay resultados relevantes: genera **estimacion de precio de mercado** con desglose completo y aviso `⚠️ ESTIMACIÓN DE MERCADO`
+- El campo `metadata.is_market_estimate` indica si la respuesta es una estimacion
+- El `session_id` devuelto debe reenviarse en consultas siguientes para mantener el hilo de conversacion
 
 La respuesta incluye desglose de partidas (material, mano de obra, instalacion), sugerencias de alternativas cuando no se encuentra exactamente lo solicitado, y referencias a las normativas vigentes (CTE, LOE, RITE, RIPCI, RSIF, EHE-08, EAE, REBT).
 
@@ -426,7 +446,7 @@ Genera y descarga directamente un archivo `.bc3`. Mismos parametros que `generat
 GET /health
 ```
 
-Verifica que la API este funcionando. Devuelve `{"status": "healthy", "version": "1.0.0"}`.
+Verifica que la API este funcionando. Devuelve `{"status": "healthy", "version": "2.0.0"}`.
 
 ---
 
@@ -444,7 +464,7 @@ Verifica que la API este funcionando. Devuelve `{"status": "healthy", "version":
 
 El sistema soporta archivos BC3, el estandar espanol (FIEBDC-3) para intercambio de bases de datos de construccion. Compatible con archivos generados por Presto, Arquimedes, TCQ y otros programas de mediciones.
 
-Registros soportados:
+Registros soportados (lectura/procesamiento):
 
 - `~V` - Version del formato y software origen
 - `~C` - Conceptos: `~C|CODIGO|UNIDAD|RESUMEN|PRECIO|FECHA|FLAGS|`
@@ -452,6 +472,18 @@ Registros soportados:
 - `~T` - Textos descriptivos largos
 - `~L` - Jerarquia (capitulos/subcapitulos)
 - `~K` - Configuracion (moneda, decimales)
+- `~M` - Mediciones
+
+Registros generados (exportacion BC3 para Presto):
+
+- `~V` - Version FIEBDC-3/2020
+- `~K` - Coeficientes (CI, GG, BI, divisa EUR)
+- `~C` - Proyecto raiz (##), capitulo (#), partidas
+- `~T` - Textos descriptivos
+- `~M` - Mediciones (1 ud por partida)
+- `~D` - Descomposicion proyecto→capitulo y capitulo→partidas
+
+El archivo se genera con encoding Latin-1 (ISO-8859-1) y line endings CRLF, compatible con Presto, Arquimedes y TCQ. Los codigos duplicados se resuelven automaticamente con sufijo numerico.
 
 Cada concepto se convierte en un chunk independiente con formato estructurado:
 ```
@@ -508,9 +540,9 @@ DATABASE_URL_SYNC=postgresql+psycopg2://postgres:postgres@db:5432/rag_presupuest
 
 # Google Gemini
 GEMINI_API_KEY=tu_api_key
-GEMINI_MODEL=gemini-2.5-pro
+GEMINI_MODEL=gemini-2.5-flash
 GEMINI_TEMPERATURE=0.7
-GEMINI_MAX_TOKENS=2048
+GEMINI_MAX_TOKENS=8192
 
 # Embeddings
 EMBEDDING_MODEL=paraphrase-multilingual-MiniLM-L12-v2

@@ -1,7 +1,9 @@
 """
 Generador de archivos BC3/FIEBDC-3.
 Genera archivos BC3 a partir de resultados de búsqueda RAG.
+Cuando una partida no tiene precio en la BD, lo estima vía LLM.
 """
+import asyncio
 import re
 from datetime import datetime
 from typing import Any
@@ -9,18 +11,24 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.services.vector_search_service import VectorSearchService
+from app.llm import get_llm_client
 from loguru import logger
+
+# Separador de línea FIEBDC-3 estándar
+_CRLF = "\r\n"
 
 
 class BC3Generator:
     """
     Genera archivos BC3 a partir de partidas encontradas en la
     base de conocimiento mediante búsqueda vectorial.
+    Las partidas sin precio son enriquecidas con estimación LLM.
     """
 
     def __init__(self, session: AsyncSession):
         self.session = session
         self.search_service = VectorSearchService(session)
+        self.llm_client = get_llm_client()
 
     async def generate_from_queries(
         self,
@@ -41,6 +49,7 @@ class BC3Generator:
         """
         all_items = []
         seen_chunks = set()
+        seen_codes = set()
 
         for query in queries:
             results = await self.search_service.search(
@@ -56,11 +65,38 @@ class BC3Generator:
 
                 parsed = self._parse_chunk_to_item(r["content"], r["score"])
                 if parsed:
+                    # Asegurar código único
+                    code = self._sanitize_bc3_code(parsed["code"])
+                    if code in seen_codes:
+                        # Añadir sufijo numérico para evitar duplicados
+                        i = 2
+                        while f"{code}{i}" in seen_codes:
+                            i += 1
+                        code = f"{code}{i}"
+                    seen_codes.add(code)
+                    parsed["code"] = code
                     all_items.append(parsed)
 
         if not all_items:
             logger.warning("No se encontraron partidas para generar BC3")
             return self._generate_empty_bc3(project_name)
+
+        # Enriquecer con LLM las partidas que no tienen precio
+        items_without_price = [i for i in all_items if i["price"] == 0.0]
+        if items_without_price:
+            logger.info(
+                f"Enriqueciendo {len(items_without_price)} partidas sin precio con LLM..."
+            )
+            enriched = await asyncio.gather(
+                *[self._enrich_item_with_llm(item) for item in items_without_price],
+                return_exceptions=True,
+            )
+            for item, result in zip(items_without_price, enriched):
+                if isinstance(result, Exception):
+                    logger.warning(f"No se pudo enriquecer '{item['summary']}': {result}")
+                elif isinstance(result, float) and result > 0:
+                    item["price"] = result
+                    item["price_estimated"] = True
 
         bc3_content = self._build_bc3(all_items, project_name)
 
@@ -167,41 +203,94 @@ class BC3Generator:
 
         return item
 
+    async def _enrich_item_with_llm(self, item: dict[str, Any]) -> float:
+        """
+        Estima el precio de una partida sin precio usando el LLM.
+        Devuelve el precio estimado como float, o 0.0 si no puede estimarlo.
+
+        Args:
+            item: Diccionario con datos de la partida (summary, unit, code).
+
+        Returns:
+            Precio estimado en euros o 0.0 si no se pudo estimar.
+        """
+        summary = item.get("summary", "")
+        unit = item.get("unit", "ud")
+
+        if not summary:
+            return 0.0
+
+        prompt = (
+            f"Para la siguiente partida de obra, proporciona ÚNICAMENTE el precio "
+            f"de mercado en España en euros, como número decimal. "
+            f"Nada más, solo el número.\n\n"
+            f"Partida: {summary}\nUnidad: {unit}\n\nPrecio (€):"
+        )
+
+        try:
+            response = await self.llm_client.generate(
+                prompt=prompt,
+                system_prompt=(
+                    "Eres un aparejador experto en presupuestación de obra en España. "
+                    "Responde ÚNICAMENTE con el precio numérico en euros. Sin texto adicional."
+                ),
+                temperature=0.1,
+                max_tokens=20,
+            )
+            # Extraer número de la respuesta
+            match = re.search(r"(\d+(?:[.,]\d{1,2})?)", response.strip())
+            if match:
+                price = float(match.group(1).replace(",", "."))
+                logger.debug(f"Precio estimado LLM para '{summary[:50]}': {price}€/{unit}")
+                return price
+        except Exception as e:
+            logger.warning(f"Error al estimar precio LLM para '{summary[:50]}': {e}")
+
+        return 0.0
+
     def _build_bc3(
         self, items: list[dict[str, Any]], project_name: str
     ) -> str:
         """
-        Construye el contenido del archivo BC3.
+        Construye el contenido del archivo BC3 compatible con Presto/FIEBDC-3.
 
-        Estructura:
+        Estructura completa:
             ~V - Versión
-            ~C - Concepto raíz (proyecto)
-            ~C - Concepto capítulo
+            ~K - Coeficientes (necesario para Presto)
+            ~C - Concepto raíz (proyecto) con ##
+            ~C - Concepto capítulo con #
             ~C - Conceptos (partidas)
-            ~D - Descomposición del capítulo
             ~T - Textos descriptivos
-            ~L - Jerarquía
+            ~M - Mediciones (1 ud por partida)
+            ~D - Descomposición del proyecto → capítulo
+            ~D - Descomposición del capítulo → partidas
         """
         lines = []
         today = datetime.now().strftime("%d/%m/%Y")
 
-        # ~V - Versión del formato
-        lines.append(f"~V|FIEBDC-3/2020|RAG Presupuestos|{today}|")
+        safe_project = self._sanitize_bc3_text(project_name)
 
-        # Código del proyecto (raíz)
+        # Código del proyecto (raíz) y capítulo
         root_code = "PROY"
         chapter_code = "CAP01"
 
+        # ~V - Versión del formato
+        lines.append(f"~V|FIEBDC-3/2020|RAG Presupuestos|{today}|")
+
+        # ~K - Coeficientes (porcentajes: CI, GG, BI, BAJA, IVA, ...\n divisa)
+        # Formato mínimo para que Presto lo acepte
+        lines.append("~K|\\2\\2\\2\\2\\2\\2\\EUR|")
+
         # ~C - Concepto raíz (proyecto)
-        lines.append(f"~C|{root_code}##||{project_name}||")
+        lines.append(f"~C|{root_code}##||{safe_project}||")
 
         # ~C - Capítulo contenedor
-        lines.append(f"~C|{chapter_code}#||Partidas encontradas||")
+        lines.append(f"~C|{chapter_code}#||Partidas||")
 
         # ~C - Cada partida
         for item in items:
-            code = self._sanitize_bc3_code(item["code"])
-            unit = item["unit"]
+            code = item["code"]
+            unit = self._sanitize_bc3_text(item["unit"])
             summary = self._sanitize_bc3_text(item["summary"][:200])
             price = f"{item['price']:.2f}" if item["price"] > 0 else ""
             lines.append(f"~C|{code}|{unit}|{summary}|{price}|")
@@ -209,37 +298,44 @@ class BC3Generator:
         # ~T - Textos descriptivos
         for item in items:
             if item.get("description"):
-                code = self._sanitize_bc3_code(item["code"])
+                code = item["code"]
                 desc = self._sanitize_bc3_text(item["description"])
                 lines.append(f"~T|{code}|{desc}|")
 
-        # ~D - Descomposición del capítulo (contiene todas las partidas)
+        # ~M - Mediciones (1 unidad por partida para que Presto las muestre)
+        for item in items:
+            code = item["code"]
+            lines.append(f"~M|{code}|{chapter_code}#\\1\\1\\1\\1\\Medicion\\|")
+
+        # ~D - Descomposición del proyecto → capítulo
+        lines.append(f"~D|{root_code}##|{chapter_code}#\\1.0\\1.0\\|")
+
+        # ~D - Descomposición del capítulo → partidas
         children = []
         for item in items:
-            code = self._sanitize_bc3_code(item["code"])
+            code = item["code"]
             children.append(f"{code}\\1.0\\1.0")
         if children:
             children_str = "\\".join(children)
             lines.append(f"~D|{chapter_code}#|{children_str}\\|")
 
-        # ~L - Jerarquía: raíz contiene capítulo
-        lines.append(f"~L|{root_code}##|{chapter_code}#\\|")
-
-        return "\n".join(lines) + "\n"
+        return _CRLF.join(lines) + _CRLF
 
     def _generate_empty_bc3(self, project_name: str) -> str:
         """Genera un BC3 vacío con solo la cabecera."""
         today = datetime.now().strftime("%d/%m/%Y")
+        safe_project = self._sanitize_bc3_text(project_name)
         lines = [
             f"~V|FIEBDC-3/2020|RAG Presupuestos|{today}|",
-            f"~C|PROY##||{project_name}||",
+            "~K|\\2\\2\\2\\2\\2\\2\\EUR|",
+            f"~C|PROY##||{safe_project}||",
             "~C|CAP01#||Sin partidas encontradas||",
-            "~L|PROY##|CAP01#\\|",
+            "~D|PROY##|CAP01#\\1.0\\1.0\\|",
         ]
-        return "\n".join(lines) + "\n"
+        return _CRLF.join(lines) + _CRLF
 
     def _sanitize_bc3_code(self, code: str) -> str:
-        """Sanitiza un código para formato BC3 (alfanumérico)."""
+        """Sanitiza un código para formato BC3 (alfanumérico, max 20 chars)."""
         clean = re.sub(r"[^a-zA-Z0-9_]", "", code)
         return clean[:20] if clean else "X001"
 
@@ -251,6 +347,8 @@ class BC3Generator:
         text = text.replace("\\", " ")
         # Eliminar saltos de línea
         text = text.replace("\n", " ").replace("\r", " ")
+        # Reemplazar caracteres problemáticos para Latin-1
+        text = text.replace("²", "2").replace("³", "3")
         # Eliminar espacios múltiples
         text = re.sub(r"\s+", " ", text).strip()
         return text

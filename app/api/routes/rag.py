@@ -1,6 +1,8 @@
 """
 Endpoints para consultas RAG.
 """
+import uuid as uuid_lib
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import Response
 from slowapi import Limiter
@@ -48,16 +50,21 @@ async def query_rag(
             detail="La consulta excede el límite de 5000 caracteres"
         )
     
+    # Gestionar session_id: usar el proporcionado o generar uno nuevo
+    session_id = rag_request.session_id or str(uuid_lib.uuid4())
+
     try:
         service = RAGService(session)
-        
+
         result = await service.query(
             query=rag_request.query,
             max_results=rag_request.max_results,
             filters=rag_request.filters,
             include_sources=rag_request.include_sources,
+            min_score=rag_request.min_score,
+            session_id=session_id,
         )
-        
+
         # Convertir fuentes a ChunkResult
         sources = []
         if rag_request.include_sources:
@@ -71,14 +78,15 @@ async def query_rag(
                     source_page=src.get("source_page"),
                     source_row=src.get("source_row"),
                 ))
-        
+
         return RAGQueryResponse(
             query=rag_request.query,
             answer=result["answer"],
             sources=sources,
             metadata=result.get("metadata", {}),
+            session_id=session_id,
         )
-        
+
     except Exception as e:
         logger.error(f"Error en consulta RAG: {e}")
         raise HTTPException(status_code=500, detail="Error al procesar la consulta")
@@ -166,10 +174,16 @@ async def download_bc3(
             project_name=bc3_request.project_name,
         )
 
-        # Codificar en latin-1 (estándar BC3 en España)
+        # Codificar en latin-1 (estándar FIEBDC-3 en España)
+        # El contenido ya usa CRLF como separador de línea
         bc3_bytes = bc3_content.encode("latin-1", errors="replace")
 
-        filename = "presupuesto.bc3"
+        # Generar nombre descriptivo con proyecto y fecha
+        import re as _re
+        from datetime import datetime as _dt
+        safe_name = _re.sub(r"[^a-zA-Z0-9_-]", "_", bc3_request.project_name)[:50]
+        date_str = _dt.now().strftime("%Y%m%d")
+        filename = f"{safe_name}_{date_str}.bc3"
 
         return Response(
             content=bc3_bytes,

@@ -34,7 +34,7 @@ class Settings(BaseSettings):
         description="API key de Google Gemini"
     )
     gemini_model: str = Field(
-        default="gemini-2.5-flash-lite",
+        default="gemini-2.5-flash",
         description="Modelo de Gemini a utilizar"
     )
     gemini_temperature: float = Field(
@@ -80,7 +80,7 @@ class Settings(BaseSettings):
         description="Título de la API"
     )
     api_version: str = Field(
-        default="1.0.0",
+        default="2.0.0",
         description="Versión de la API"
     )
     api_description: str = Field(
@@ -95,7 +95,7 @@ class Settings(BaseSettings):
         description="Tamaño máximo de archivo en MB"
     )
     allowed_extensions: str = Field(
-        default="pdf,txt,csv,docx,xlsx",
+        default="pdf,txt,csv,docx,xlsx,bc3",
         description="Extensiones de archivo permitidas"
     )
     upload_dir: str = Field(
@@ -105,13 +105,13 @@ class Settings(BaseSettings):
 
     # Processing
     chunk_size: int = Field(
-        default=500,
+        default=1000,
         ge=100,
-        le=2000,
+        le=4000,
         description="Tamaño de chunk para procesamiento de texto"
     )
     chunk_overlap: int = Field(
-        default=50,
+        default=100,
         ge=0,
         le=500,
         description="Superposición entre chunks"

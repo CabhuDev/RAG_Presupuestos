@@ -227,6 +227,13 @@ class DocumentService:
                 document.effective_date = safe_metadata["fecha_vigencia"]
             if "proveedor" in safe_metadata:
                 document.supplier = safe_metadata["proveedor"]
+            if "zona_geografica" in safe_metadata:
+                document.geographic_zone = safe_metadata["zona_geografica"]
+            if "anio_precio" in safe_metadata:
+                try:
+                    document.price_year = int(safe_metadata["anio_precio"])
+                except (ValueError, TypeError):
+                    pass
 
             document.metadata_json = json.dumps(safe_metadata)
 

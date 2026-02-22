@@ -136,8 +136,9 @@ class GeminiClient(LLMClient):
         query: str,
         context: list[str],
         system_prompt: str | None = None,
-        temperature: float = 0.7,
+        temperature: float = 0.1,
         max_tokens: int = 8192,
+        conversation_history: list[dict] | None = None,
     ) -> str:
         """
         Genera una respuesta usando RAG.
@@ -146,8 +147,9 @@ class GeminiClient(LLMClient):
             query: Consulta del usuario.
             context: Lista de fragmentos relevantes.
             system_prompt: Prompt del sistema.
-            temperature: Temperatura para generación.
+            temperature: Temperatura para generación (0.1 por defecto para precios consistentes).
             max_tokens: Máximo de tokens en la respuesta.
+            conversation_history: Historial de mensajes previos de la sesión.
 
         Returns:
             Texto generado.
@@ -182,8 +184,17 @@ FORMATO DE RESPUESTA:
 - Si puedes aportar contexto profesional útil (ej: "este precio está dentro del rango habitual en obra nueva" o "conviene verificar si incluye transporte"), hazlo brevemente.
 - Al final, añade una sección **Fuentes** con el nombre del documento y página."""
 
+        # Construir sección de historial si existe
+        history_section = ""
+        if conversation_history:
+            history_lines = ["Historial de la conversación actual:"]
+            for msg in conversation_history:
+                role_label = "Usuario" if msg["role"] == "user" else "Asistente"
+                history_lines.append(f"{role_label}: {msg['content']}")
+            history_section = "\n".join(history_lines) + "\n\n---\n\n"
+
         # Construir prompt completo
-        full_prompt = f"""Contexto (fragmentos de documentos de la base de conocimiento):
+        full_prompt = f"""{history_section}Contexto (fragmentos de documentos de la base de conocimiento):
 {context_text}
 
 ---
@@ -197,6 +208,59 @@ Respuesta:"""
             system_prompt=system_prompt,
             temperature=temperature,
             max_tokens=max_tokens,
+        )
+
+    async def generate_market_price_estimate(
+        self,
+        query: str,
+        conversation_history: list[dict] | None = None,
+    ) -> str:
+        """
+        Genera una estimación de precio de mercado cuando no hay contexto en la BD.
+        Usa temperature muy baja para máxima consistencia y precisión.
+
+        Args:
+            query: Descripción del trabajo o material a valorar.
+            conversation_history: Historial de mensajes previos de la sesión.
+
+        Returns:
+            Texto con estimación de precio desglosada y justificada.
+        """
+        system_prompt = """Eres un aparejador colegiado con 20 años de experiencia en presupuestación de obra en España.
+El usuario solicita un precio para un trabajo o material que NO está en su base de conocimiento propia.
+Tu tarea es generar una estimación de precio de mercado actual para España, rigurosa y fundamentada.
+
+REGLAS OBLIGATORIAS:
+- Desglosar SIEMPRE en: materiales, mano de obra, medios auxiliares, gastos generales (13%) y beneficio industrial (6%).
+- Indicar la unidad de medida correcta (m², ml, m³, ud, kg, pa...).
+- Proporcionar un rango de precio (mínimo-máximo) además del precio medio.
+- Mencionar los factores que pueden hacer variar el precio (zona geográfica, calidades, accesibilidad).
+- Indicar qué normativa aplica si es relevante (CTE, RITE, REBT, EHE-08...).
+- Ser conservador: es mejor quedar ligeramente por encima que sorprender con extra costes.
+
+FORMATO:
+- Usar markdown con tabla de desglose.
+- Incluir sección "Factores de variación del precio".
+- NO inventar marcas ni referencias específicas que no puedas garantizar."""
+
+        # Construir sección de historial si existe
+        history_section = ""
+        if conversation_history:
+            history_lines = ["Historial de la conversación actual:"]
+            for msg in conversation_history:
+                role_label = "Usuario" if msg["role"] == "user" else "Asistente"
+                history_lines.append(f"{role_label}: {msg['content']}")
+            history_section = "\n".join(history_lines) + "\n\n---\n\n"
+
+        prompt = f"""{history_section}Necesito una estimación de precio de mercado para: {query}
+
+Proporciona el desglose completo con precio unitario, rango de variación y justificación técnica."""
+
+        return await self.generate(
+            prompt=prompt,
+            system_prompt=system_prompt,
+            temperature=0.15,
+            max_tokens=8192,
         )
 
 

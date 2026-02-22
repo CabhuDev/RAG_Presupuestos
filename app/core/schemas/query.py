@@ -30,6 +30,22 @@ class RAGQueryRequest(BaseModel):
         default=True,
         description="Incluir los fragmentos de texto fuente en la respuesta"
     )
+    min_score: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Score mínimo de similitud (0-1). Resultados por debajo de este umbral "
+            "se descartan y el sistema genera una estimación de mercado."
+        )
+    )
+    session_id: Optional[str] = Field(
+        default=None,
+        description=(
+            "ID de sesión para memoria conversacional. Si no se proporciona, "
+            "el backend genera uno nuevo y lo devuelve en la respuesta."
+        )
+    )
 
 
 class ChunkResult(BaseModel):
@@ -56,7 +72,14 @@ class RAGQueryResponse(BaseModel):
     sources: list[ChunkResult] = Field(default_factory=list)
     metadata: dict = Field(
         default_factory=dict,
-        description="Metadatos de la consulta (tokens, modelo usado, etc.)"
+        description=(
+            "Metadatos de la consulta. Incluye: results_count, max_score, "
+            "is_market_estimate (bool), min_score_used."
+        )
+    )
+    session_id: Optional[str] = Field(
+        default=None,
+        description="ID de sesión. Reutilizar en siguientes consultas para mantener contexto."
     )
 
 

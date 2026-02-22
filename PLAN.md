@@ -1,8 +1,8 @@
-# RAG para Presupuestos de Obra - Plan Tecnico
+# RAG para Presupuestos de Obra - Plan Tecnico v2.0
 
 ## Vision General
 
-Sistema RAG (Retrieval Augmented Generation) para crear presupuestos de obra. La base de conocimiento se alimenta con documentos PDF, TXT, CSV, DOCX y BC3/FIEBDC-3 para que el LLM responda con informacion precisa sobre precios, materiales y normas del sector construccion en Espana.
+Sistema RAG (Retrieval Augmented Generation) para crear presupuestos de obra. La base de conocimiento se alimenta con documentos PDF, TXT, CSV, DOCX, XLSX y BC3/FIEBDC-3. El sistema responde con informacion precisa sobre precios, materiales y normas del sector construccion en Espana. Cuando no encuentra informacion en la BD, genera estimaciones de precio de mercado desglosadas y justificadas con aviso claro al usuario.
 
 ---
 
@@ -13,7 +13,8 @@ Sistema RAG (Retrieval Augmented Generation) para crear presupuestos de obra. La
 | **API Framework** | FastAPI | Async, documentacion automatica con Swagger |
 | **Base de Datos** | PostgreSQL + pgvector 0.2.5 | Capacidades vectoriales nativas |
 | **ORM** | SQLAlchemy 2.0 (async) | ORM robusto con soporte asyncpg |
-| **LLM** | Google Gemini (configurable en .env) | Buen rendimiento en espanol |
+| **LLM** | Google Gemini 2.5 Flash (configurable en .env) | Buen rendimiento en espanol, equilibrio coste/calidad |
+| **Busqueda** | pgvector + PostgreSQL FTS + RRF | Busqueda hibrida: semantica + exacta |
 | **Embeddings** | sentence-transformers (paraphrase-multilingual-MiniLM-L12-v2) | Multilingue, 384 dimensiones, optimizado para espanol |
 | **Migraciones** | Alembic | Migraciones idempotentes para reinicios seguros |
 | **Contenedores** | Docker Compose | PyTorch CPU-only, hot-reload, mem_limit 3g |
@@ -52,12 +53,13 @@ RAG_construccion/
 │   │   │   ├── document.py
 │   │   │   ├── query.py          # Incluye schemas BC3
 │   │   │   └── response.py
+│   │   ├── session_store.py       # Store in-memory para conversaciones (TTL 2h)
 │   │   └── services/             # Logica de negocio
 │   │       ├── __init__.py
 │   │       ├── document_service.py      # Gestion y procesamiento de documentos
-│   │       ├── vector_search_service.py # Busqueda vectorial con pgvector
-│   │       ├── rag_service.py           # Orquestacion RAG
-│   │       └── bc3_generator.py         # Generacion de archivos BC3
+│   │       ├── vector_search_service.py # Busqueda hibrida (vector + FTS + RRF)
+│   │       ├── rag_service.py           # Orquestacion RAG + estimacion mercado
+│   │       └── bc3_generator.py         # Generacion BC3 + enriquecimiento LLM
 │   │
 │   ├── processors/               # Procesadores de documentos
 │   │   ├── __init__.py           # Registry de procesadores
@@ -86,7 +88,9 @@ RAG_construccion/
 │   ├── env.py
 │   ├── script.py.mako
 │   ├── versions/
-│   │   └── 001_initial_migration.py  # Migracion idempotente
+│   │   ├── 001_initial_migration.py       # Migracion idempotente
+│   │   ├── 002_add_fts_search.py          # FTS: tsvector, GIN index, trigger
+│   │   └── 003_add_geo_year_to_documents.py  # Zona geo + anio precio
 │   └── README.md
 │
 ├── alembic.ini
@@ -147,16 +151,19 @@ RAG_construccion/
 
 ## Flujo RAG
 
-1. **Upload** - El usuario sube documentos via API
+1. **Upload** - El usuario sube documentos via API (con metadatos opcionales: zona geo, anio precio)
 2. **Procesamiento** (background) - Se extrae texto segun el tipo de archivo
-3. **Chunking** - Se divide en fragmentos con metadata (pagina, fila, codigo BC3)
+3. **Chunking** - Se divide en fragmentos de 1000 chars con overlap de 100 (pagina, fila, codigo BC3)
 4. **Embeddings** - Se generan vectores con paraphrase-multilingual-MiniLM-L12-v2
-5. **Almacenamiento** - Vectores en PostgreSQL + pgvector
-6. **Consulta** - El usuario hace una pregunta
-7. **Busqueda vectorial** - Se buscan chunks similares (CAST AS vector)
-8. **Contexto** - Se ensambla contexto con documento + pagina
-9. **LLM** - Gemini genera respuesta como arquitecto tecnico experto
-10. **Respuesta** - Se devuelve respuesta + fuentes al usuario
+5. **FTS** - Se genera tsvector automaticamente via trigger PostgreSQL
+6. **Almacenamiento** - Vectores en PostgreSQL + pgvector, tsvector con indice GIN
+7. **Consulta** - El usuario hace una pregunta (con session_id para memoria)
+8. **Busqueda hibrida** - Vector (semantica) + FTS (exacta) fusionadas con RRF (k=60)
+9. **Filtrado por score** - Solo resultados con score >= min_score (default 0.5)
+10. **Si hay resultados**: Contexto + LLM a temperature 0.1 → respuesta precisa
+11. **Si NO hay resultados**: LLM genera estimacion de mercado a temperature 0.15 + disclaimer
+12. **Memoria** - Se guarda el intercambio en el historial de sesion (in-memory, TTL 2h)
+13. **Respuesta** - Se devuelve respuesta + fuentes + session_id al usuario
 
 ---
 
@@ -172,9 +179,16 @@ RAG_construccion/
 
 ### Generacion (RAG -> BC3)
 1. El usuario envia lista de partidas a buscar
-2. Se busca cada partida por busqueda vectorial
+2. Se busca cada partida por busqueda hibrida (vector + FTS)
 3. Se extraen codigo, precio, unidad de cada resultado
-4. Se genera archivo BC3 valido con estructura proyecto > capitulo > partidas
+4. Codigos duplicados se resuelven con sufijo numerico automatico
+5. Partidas sin precio se enriquecen con estimacion LLM en paralelo
+6. Se genera archivo BC3 valido compatible con Presto:
+   - Registros ~V (version), ~K (coeficientes), ~C (conceptos), ~T (textos), ~M (mediciones), ~D (descomposicion)
+   - Jerarquia: PROY## > CAP01# > partidas (con ~D para cada nivel)
+   - Encoding Latin-1 (ISO-8859-1) + line endings CRLF
+   - Caracteres unicode (²,³) reemplazados a ASCII (2,3)
+7. La descarga genera un filename descriptivo: `{proyecto}_{fecha}.bc3`
 
 ---
 
@@ -198,7 +212,15 @@ RAG_construccion/
 - [x] Hacer migraciones Alembic idempotentes
 - [x] Implementar parser BC3/FIEBDC-3
 - [x] Implementar generacion de archivos BC3 desde consultas RAG
-- [ ] Crear tests unitarios y de integracion
+- [x] Implementar estimacion de precio de mercado (fallback sin contexto)
+- [x] Implementar busqueda hibrida (vectorial + FTS + RRF)
+- [x] Implementar memoria de conversacion por sesion (in-memory)
+- [x] Enriquecer BC3 con LLM para partidas sin precio
+- [x] Metadatos extendidos (zona geografica + anio de precio)
+- [x] Temperature baja para precios consistentes
+- [x] Chunk size optimizado (1000 chars, overlap 100)
+- [x] Crear tests unitarios (172 tests: config, schemas, session, processors, BC3, RRF)
+- [x] BC3 compatible con Presto (registros ~K, ~M, ~D raiz, CRLF, Latin-1, sin duplicados)
 - [ ] Implementar autenticacion (API Keys / JWT)
 
 ---
@@ -212,9 +234,9 @@ DATABASE_URL_SYNC=postgresql+psycopg2://postgres:postgres@db:5432/rag_presupuest
 
 # Google Gemini (modelo SOLO se cambia aqui)
 GEMINI_API_KEY=your_gemini_api_key
-GEMINI_MODEL=gemini-2.5-pro
+GEMINI_MODEL=gemini-2.5-flash
 GEMINI_TEMPERATURE=0.7
-GEMINI_MAX_TOKENS=2048
+GEMINI_MAX_TOKENS=8192
 
 # Embeddings
 EMBEDDING_MODEL=paraphrase-multilingual-MiniLM-L12-v2
@@ -228,10 +250,10 @@ MAX_FILE_SIZE_MB=50
 ALLOWED_EXTENSIONS=pdf,txt,csv,docx,xlsx,bc3
 
 # Procesamiento
-CHUNK_SIZE=500
-CHUNK_OVERLAP=50
+CHUNK_SIZE=1000
+CHUNK_OVERLAP=100
 ```
 
 ---
 
-*Documento actualizado el 20/02/2026*
+*Documento actualizado el 21/02/2026*

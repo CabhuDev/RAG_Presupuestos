@@ -39,8 +39,9 @@ class LLMClient(ABC):
         query: str,
         context: list[str],
         system_prompt: str | None = None,
-        temperature: float = 0.7,
+        temperature: float = 0.1,
         max_tokens: int = 2048,
+        conversation_history: list[dict] | None = None,
     ) -> str:
         """
         Genera una respuesta usando RAG (Retrieval Augmented Generation).
@@ -49,10 +50,29 @@ class LLMClient(ABC):
             query: Consulta del usuario.
             context: Lista de fragmentos relevantes.
             system_prompt: Prompt del sistema (opcional).
-            temperature: Temperatura para generación.
+            temperature: Temperatura para generación (0.1 por defecto para precios).
             max_tokens: Máximo de tokens en la respuesta.
+            conversation_history: Historial de mensajes previos de la sesión.
 
         Returns:
             Texto generado.
+        """
+        pass
+
+    @abstractmethod
+    async def generate_market_price_estimate(
+        self,
+        query: str,
+        conversation_history: list[dict] | None = None,
+    ) -> str:
+        """
+        Genera una estimación de precio de mercado cuando no hay contexto en la BD.
+
+        Args:
+            query: Descripción del trabajo o material a valorar.
+            conversation_history: Historial de mensajes previos de la sesión.
+
+        Returns:
+            Texto con estimación de precio desglosada y justificada.
         """
         pass

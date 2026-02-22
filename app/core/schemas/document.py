@@ -28,6 +28,20 @@ class DocumentMetadata(BaseModel):
         default=None,
         description="Proveedor o fuente del documento"
     )
+    zona_geografica: Optional[str] = Field(
+        default=None,
+        description=(
+            "Zona geográfica de aplicación de precios. "
+            "Valores: nacional, andalucia, madrid, cataluna, valencia, "
+            "galicia, pais_vasco, aragon, castilla_leon, murcia, canarias, baleares"
+        )
+    )
+    anio_precio: Optional[int] = Field(
+        default=None,
+        ge=2000,
+        le=2100,
+        description="Año de vigencia de los precios del documento (ej: 2025)"
+    )
 
 
 class DocumentUploadResponse(BaseModel):
@@ -73,6 +87,8 @@ class DocumentResponse(BaseModel):
     category: Optional[str] = None
     effective_date: Optional[str] = None
     supplier: Optional[str] = None
+    geographic_zone: Optional[str] = None
+    price_year: Optional[int] = None
     version: int
     chunk_count: int
     embedding_count: int

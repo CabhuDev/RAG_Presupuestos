@@ -76,6 +76,16 @@ class Document(Base, UUIDMixin, TimestampMixin):
     # Proveedor/fuente del documento
     supplier: Mapped[str] = mapped_column(String(255), nullable=True)
 
+    # Zona geográfica de vigencia de los precios
+    # Ejemplos: "nacional", "andalucia", "madrid", "cataluna", "valencia"
+    geographic_zone: Mapped[str] = mapped_column(
+        String(50), nullable=True, index=True
+    )
+
+    # Año de vigencia de los precios (para catálogos y preciarios)
+    # Ejemplo: 2024, 2025
+    price_year: Mapped[int] = mapped_column(Integer, nullable=True, index=True)
+
     # Número de versión del documento
     version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
 

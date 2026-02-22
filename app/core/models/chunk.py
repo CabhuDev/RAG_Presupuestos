@@ -2,6 +2,7 @@
 Modelo de Chunk.
 Representa un fragmento de texto extraído de un documento.
 """
+from typing import Optional
 from uuid import UUID as UUIDType
 
 from sqlalchemy import ForeignKey, Integer, String, Text
@@ -47,6 +48,10 @@ class Chunk(Base, UUIDMixin, TimestampMixin):
 
     # Indica si el chunk tiene embedding generado
     has_embedding: Mapped[bool] = mapped_column(default=False, nullable=False)
+
+    # Vector de búsqueda full-text (gestionado por trigger de BD)
+    # Se almacena como texto serializado de tsvector para compatibilidad con SQLAlchemy
+    search_vector: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # Relaciones
     document: Mapped["Document"] = relationship(
