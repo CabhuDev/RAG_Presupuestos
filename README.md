@@ -560,3 +560,7 @@ ALLOWED_EXTENSIONS=pdf,txt,csv,docx,xlsx,bc3
 ## Licencia
 
 MIT License
+
+## Autor
+
+**Pablo Cabello** · Arquitecto Técnico · IA aplicada a construcción · [pablocabello.eu](https://pablocabello.eu)
